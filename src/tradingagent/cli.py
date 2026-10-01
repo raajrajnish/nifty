@@ -576,6 +576,52 @@ def cmd_backtest_magnitude(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest_internet(args: argparse.Namespace) -> int:
+    from datetime import date, datetime
+
+    import pandas as pd
+
+    from tradingagent.data.store import MarketStore
+    from tradingagent.sim.costs import CostModel
+    from tradingagent.sim.discovery_study import load_expiries, summarize_a
+    from tradingagent.sim.internet_study import claims, stage_a, stage_b, summarize_b
+
+    expiries = load_expiries(ROOT / "data" / "expiries" / "NIFTY.csv")
+    out = ROOT / "data" / "reports" / "backtests" / f"internet_{datetime.now():%Y%m%d_%H%M}"
+    out.mkdir(parents=True, exist_ok=True)
+    store = MarketStore(DB_PATH, read_only=True)
+    decide, old, full = ((date(2024, 10, 1), date(2026, 9, 30)), (date(2021, 11, 1), date(2023, 11, 30)),
+                         (date(2021, 10, 1), date(2026, 9, 30)))
+    try:
+        with pd.option_context("display.width", 260, "display.max_columns", 30):
+            t = stage_b(store, CostModel(load_config(ROOT / "config").costs), expiries, *decide)
+            t.to_csv(out / "trades.csv", index=False)
+            r = summarize_b(t)
+            r.to_csv(out / "stage_b.csv", index=False)
+            print(f"=== DECIDES: option P&L {decide[0]} → {decide[1]} ===")
+            print(r.drop(columns=["median_delay_min"]).to_string(index=False))
+            print("\nexit reasons:\n" + pd.crosstab(t["variant"], t["reason"]).to_string())
+            a = summarize_a(stage_a(store, expiries, *old))
+            a.to_csv(out / "stage_a_old.csv", index=False)
+            print(f"\n=== info: direction {old[0]} → {old[1]} ===")
+            print(a.drop(columns=["PASS_A"]).to_string(index=False))
+            cl = claims(store, expiries, *full)
+            cl.to_csv(out / "claims.csv", index=False)
+            months = cl["month"].nunique() if len(cl) else 0
+            print(f"\n=== info: claim checks {full[0]} → {full[1]} (index only, {months} months with signals) ===")
+            n_months = (full[1].year - full[0].year) * 12 + full[1].month - full[0].month + 1
+            print((cl.groupby("setup").size() / n_months).round(1).rename("signals_per_month").to_string())
+            for col in ("T1", "T2", "T3"):
+                if col in cl:
+                    print(f"\n{col} reached before stop (by 15:10):")
+                    print(cl.dropna(subset=[col]).groupby("setup")[col].value_counts(normalize=True)
+                          .mul(100).round(1).unstack().to_string())
+    finally:
+        store.close()
+    print(f"\nWritten to {out}")
+    return 0
+
+
 def cmd_backtest_popular(args: argparse.Namespace) -> int:
     from datetime import date, datetime
 
@@ -699,6 +745,8 @@ def main(argv: list[str] | None = None) -> int:
     pop.add_argument("--start", default="", help="stage B window start YYYY-MM-DD (default 2023-12-01)")
     pop.add_argument("--end", default="", help="stage B window end YYYY-MM-DD (default 2026-09-30)")
     pop.set_defaults(fn=cmd_backtest_popular)
+    sub.add_parser("backtest-internet", help="internet strategies batch 2 (pre-declared, recent 2 years decide)"
+                   ).set_defaults(fn=cmd_backtest_internet)
     sub.add_parser("backtest-magnitude", help="can big-move days be predicted by 09:30? (measurement)").set_defaults(
         fn=cmd_backtest_magnitude)
     dv = sub.add_parser("backtest-discovery", help="new-setup discovery: stage A (untouched data) / B (options)")

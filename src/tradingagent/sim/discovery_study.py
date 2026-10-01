@@ -110,7 +110,8 @@ def random_entry(g: pd.DataFrame, c: Ctx) -> Entry | None:
 def g1_signal(g: pd.DataFrame, c: Ctx) -> Entry | None:
     if not (c["open_outside"] and c["narrow_or"]):
         return None
-    return e_orb(15)(g, {"day": c["day"]}, [c["expiry"]])
+    e: Entry | None = e_orb(15)(g, {"day": c["day"]}, [c["expiry"]])  # e_orb is an untyped factory
+    return e
 
 
 def g2_signal(g: pd.DataFrame, c: Ctx) -> Entry | None:

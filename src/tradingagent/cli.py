@@ -576,6 +576,47 @@ def cmd_backtest_magnitude(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest_popular(args: argparse.Namespace) -> int:
+    from datetime import date, datetime
+
+    import pandas as pd
+
+    from tradingagent.data.store import MarketStore
+    from tradingagent.sim.costs import CostModel
+    from tradingagent.sim.discovery_study import load_expiries, summarize_a, summarize_b
+    from tradingagent.sim.popular_study import stage_a, stage_b
+
+    expiries = load_expiries(ROOT / "data" / "expiries" / "NIFTY.csv")
+    out = ROOT / "data" / "reports" / "backtests" / f"popular_{args.stage}_{datetime.now():%Y%m%d_%H%M}"
+    out.mkdir(parents=True, exist_ok=True)
+    store = MarketStore(DB_PATH, read_only=True)
+    untouched, seen = (date(2021, 11, 1), date(2023, 11, 30)), (date(2023, 12, 1), date(2026, 9, 30))
+    try:
+        with pd.option_context("display.width", 260, "display.max_columns", 30):
+            if args.stage == "A":
+                a = stage_a(store, expiries, *untouched)
+                a.to_csv(out / "signals_untouched.csv", index=False)
+                sa = summarize_a(a)
+                sa.to_csv(out / "stage_a_untouched.csv", index=False)
+                print(f"=== STAGE A — UNTOUCHED {untouched[0]} → {untouched[1]} (decides) ===")
+                print(sa.to_string(index=False))
+                sb = summarize_a(stage_a(store, expiries, *seen))
+                sb.to_csv(out / "stage_a_seen_era.csv", index=False)
+                print(f"\n=== for information: {seen[0]} → {seen[1]} ===")
+                print(sb.drop(columns=["PASS_A"]).to_string(index=False))
+            else:
+                setups = [s for s in args.setups.split(",") if s]
+                t = stage_b(store, CostModel(load_config(ROOT / "config").costs), expiries, setups, *seen)
+                t.to_csv(out / "trades.csv", index=False)
+                r = summarize_b(t)
+                r.to_csv(out / "stage_b.csv", index=False)
+                print(r.drop(columns=["median_delay_min"]).to_string(index=False))
+    finally:
+        store.close()
+    print(f"\nWritten to {out}")
+    return 0
+
+
 def cmd_forward_test(_: argparse.Namespace) -> int:
     from tradingagent.data.store import MarketStore
     from tradingagent.sim.costs import CostModel
@@ -649,6 +690,10 @@ def main(argv: list[str] | None = None) -> int:
     pp.add_argument("--replay", action="store_true", help="replay a recorded day instead of running live")
     pp.add_argument("--record", action="store_true", help="with --replay: also add the trades to the ledger")
     pp.set_defaults(fn=cmd_paper)
+    pop = sub.add_parser("backtest-popular", help="popular strategies batch 1: stage A (untouched) / B (options)")
+    pop.add_argument("--stage", choices=["A", "B"], default="A")
+    pop.add_argument("--setups", default="")
+    pop.set_defaults(fn=cmd_backtest_popular)
     sub.add_parser("backtest-magnitude", help="can big-move days be predicted by 09:30? (measurement)").set_defaults(
         fn=cmd_backtest_magnitude)
     dv = sub.add_parser("backtest-discovery", help="new-setup discovery: stage A (untouched data) / B (options)")

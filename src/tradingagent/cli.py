@@ -488,6 +488,54 @@ def cmd_paper(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest_discovery(args: argparse.Namespace) -> int:
+    from datetime import datetime
+
+    import pandas as pd
+
+    from tradingagent.data.store import MarketStore
+    from tradingagent.sim.costs import CostModel
+    from tradingagent.sim.discovery_study import (
+        STAGE_A,
+        STAGE_B,
+        load_expiries,
+        stage_a,
+        stage_b,
+        summarize_a,
+        summarize_b,
+    )
+
+    expiries = load_expiries(ROOT / "data" / "expiries" / "NIFTY.csv")
+    out = ROOT / "data" / "reports" / "backtests" / f"discovery_{args.stage}_{datetime.now():%Y%m%d_%H%M}"
+    out.mkdir(parents=True, exist_ok=True)
+    store = MarketStore(DB_PATH, read_only=True)
+    try:
+        with pd.option_context("display.width", 260, "display.max_columns", 30):
+            if args.stage == "A":
+                a = stage_a(store, expiries, *STAGE_A)
+                a.to_csv(out / "signals_untouched.csv", index=False)
+                sa = summarize_a(a)
+                sa.to_csv(out / "stage_a_untouched.csv", index=False)
+                print(f"=== STAGE A — UNTOUCHED index data {STAGE_A[0]} → {STAGE_A[1]} (decides) ===")
+                print(sa.to_string(index=False))
+                a2 = stage_a(store, expiries, *STAGE_B)
+                sa2 = summarize_a(a2)
+                sa2.to_csv(out / "stage_a_seen_era.csv", index=False)
+                print(f"\n=== for information: same measures on {STAGE_B[0]} → {STAGE_B[1]} (already-studied era) ===")
+                print(sa2.drop(columns=["PASS_A"]).to_string(index=False))
+            else:
+                setups = [s for s in args.setups.split(",") if s]
+                t = stage_b(store, CostModel(load_config(ROOT / "config").costs), expiries, setups)
+                t.to_csv(out / "trades.csv", index=False)
+                sb = summarize_b(t)
+                sb.to_csv(out / "stage_b.csv", index=False)
+                print(sb.drop(columns=["median_delay_min"]).to_string(index=False))
+    finally:
+        store.close()
+    print(f"\nWritten to {out}")
+    return 0
+
+
 def cmd_forward_test(_: argparse.Namespace) -> int:
     from tradingagent.data.store import MarketStore
     from tradingagent.sim.costs import CostModel
@@ -561,6 +609,10 @@ def main(argv: list[str] | None = None) -> int:
     pp.add_argument("--replay", action="store_true", help="replay a recorded day instead of running live")
     pp.add_argument("--record", action="store_true", help="with --replay: also add the trades to the ledger")
     pp.set_defaults(fn=cmd_paper)
+    dv = sub.add_parser("backtest-discovery", help="new-setup discovery: stage A (untouched data) / B (options)")
+    dv.add_argument("--stage", choices=["A", "B"], default="A")
+    dv.add_argument("--setups", default="", help="stage B: comma-separated setups that passed stage A")
+    dv.set_defaults(fn=cmd_backtest_discovery)
     sub.add_parser("backtest-logic", help="setup-logic feature study (pre-declared)").set_defaults(
         fn=cmd_backtest_logic)
     sub.add_parser("backtest-followthrough", help="15-min follow-through exit study (pre-declared)").set_defaults(

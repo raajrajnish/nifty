@@ -6,6 +6,14 @@ One entry per trading day: what the setups did, whether the live engine matched 
 |---|---|---|---|---|---|
 | 2026-10-01 (Thu) | Not today: opened outside (below PDL 22,595), but OR 22,509–22,589 **not narrow** | Not today: **not calm** (ATR14 above its 120-day median) | — | ✅ Matches the backtest code on Groww candles | Freeze day, so it is not counted in the forward test. Nifty −1.67% at the low (range 391 pts); VIX 13.5 → 14.5. Recorder ran 09:14–15:31 with 21 errors (0.04%). |
 
+## Out-of-sample evidence (2026-10-01, discovery study)
+
+Measured on NIFTY index data from Oct 2021 – Nov 2023, which was never used to choose G1/G2:
+- **G2's direction logic holds:** end-of-day drift +0.090 ATR, 95% CI [0.001, 0.182].
+- **G1's does not:** right direction after 60 min was 50% against 53% for random; the CI includes 0.
+
+**Expectation for hypercare: G2 is the stronger candidate; G1 may underperform its backtest.** No rule change. This is context for judging the forward results.
+
 ## Open observations (to check over more days)
 
 1. **The live opening range can differ by 1–2 pts from Groww's official candles.** Live 22,509.65–22,589.05 vs official 22,508.35–22,589.35 on 2026-10-01. Live bars are built from 2-second snapshots and can miss the exact extremes. **Risk:** a breakout decided by 1–2 pts could differ from the backtest. Track each G1 day; if it ever changes a decision, consider building the OR from Groww's 1-minute candles at 09:30.

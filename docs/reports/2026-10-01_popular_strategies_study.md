@@ -56,4 +56,41 @@
 3. **Narrow CPR and Supertrend work in 2023–26 but not in 2021–23.** They are period-dependent, which is exactly what out-of-sample testing exists to catch.
 4. **Why Stage B is not needed:** the Stage A measure is magnitude-weighted. Exit study #1 showed exits cannot create an edge the entry lacks. Without directional drift, option P&L cannot be positive after costs.
 
+## Addendum: recent-regime test (PRE-DECLARED 2026-10-01 at the owner's request, before running)
+
+**Owner's reasoning:** markets change, and 2021–23 may not reflect today. So all six strategies get **Stage B (option P&L) on the latest 2 years only: 2024-10-01 → 2026-09-30** (this includes the switch to Tuesday expiries in Sep 2025).
+- **Rules:** unchanged from above. Same entries, exits, stops, costs and fills; nothing tuned.
+- **Bar:** unchanged.
+  - **PASS:** n ≥ 100; dev, validate and test (60/20/20 by date) all positive; positive at 2× costs; PF ≥ 1.10; both halves positive.
+  - **ROBUST:** PASS plus calls and puts each positive, plus still positive without the 5 best days. The RANDOM control is reported alongside.
+- **Caveats, recorded up front:**
+  1. Direction for 2023–26 was already seen (K1 and K2 looked positive there), so this window is **not untouched**.
+  2. Six strategies are tested at once, so a single marginal pass may be luck.
+- **Therefore:** a ROBUST strategy can at most become a **paper-only hypercare candidate**. Live forward results would be the deciding test, and only the owner can add it. A PASS that is not ROBUST is recorded as a lead only.
+
+### Result (run 19:33, `popular_B_20261001_1933`): NONE PASS on the latest 2 years either
+
+Net ₹ per trade, 1 lot, after Groww charges and spread.
+
+| Strategy | n | Win | Net/trade | At 2× costs | PF | Dev / Val / Test | Without top 5 days | 95% CI | PASS |
+|---|---:|---:|---:|---:|---:|---|---:|---|---|
+| K1 narrow CPR | 134 | 40% | +165 | +98 | 1.13 | +191 / +454 / **−95** | **−268** | [−436, 839] | ❌ |
+| K2 Supertrend | 236 | 38% | −49 | −117 | 0.96 | −249 / +486 / +38 | −326 | [−472, 406] | ❌ |
+| K3 first candle | 385 | 36% | **−319** | −387 | 0.81 | all three negative | −535 | [−717, 76] | ❌ |
+| K4 RSI reversal | 277 | 33% | +64 | −4 | 1.05 | −226 / +559 / +419 | −179 | [−386, 517] | ❌ |
+| K5a Camarilla breakout | 263 | 38% | −229 | −297 | 0.86 | −324 / +391 / −605 | −534 | [−698, 268] | ❌ |
+| K5b Camarilla fade | 248 | 33% | **−367** | −434 | 0.77 | all three negative | −658 | [−808, 104] | ❌ |
+| RANDOM | 388 | 36% | +64 | −3 | 1.05 | +84 / +276 / −210 | −124 | [−276, 407] | — |
+
+**Reading:**
+- **Only K1 narrow CPR is above random,** and it fails three of the checks:
+  - it loses in the most recent 20% of the window (test −95);
+  - it turns negative without its 5 best days (−268);
+  - its uncertainty range is very wide.
+  It is not a pass; recorded as a lead only.
+- **K3 and K5b lose money in every sub-period.**
+- **Random entries also make +₹64 in this window** (the market trended), so "positive" alone means little.
+
+**Verdict:** recorded as failed. The recent regime does not rescue any of these strategies.
+
 **Scorecard of popular strategies tested so far (all ideas, both studies):** ORB-15/30, EMA cross, gap-and-go, gap-fade, failed breakout, yesterday's-level breakout, afternoon continuation, opening drive, CPR, Supertrend, first-candle, RSI reversal, Camarilla breakout and fade all fail on untouched data. **G2's direction logic is the only one that partly holds out of sample.**

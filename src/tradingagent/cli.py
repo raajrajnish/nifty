@@ -606,7 +606,10 @@ def cmd_backtest_popular(args: argparse.Namespace) -> int:
                 print(sb.drop(columns=["PASS_A"]).to_string(index=False))
             else:
                 setups = [s for s in args.setups.split(",") if s]
-                t = stage_b(store, CostModel(load_config(ROOT / "config").costs), expiries, setups, *seen)
+                window = (date.fromisoformat(args.start) if args.start else seen[0],
+                          date.fromisoformat(args.end) if args.end else seen[1])
+                print(f"=== STAGE B — options {window[0]} → {window[1]} ===")
+                t = stage_b(store, CostModel(load_config(ROOT / "config").costs), expiries, setups, *window)
                 t.to_csv(out / "trades.csv", index=False)
                 r = summarize_b(t)
                 r.to_csv(out / "stage_b.csv", index=False)
@@ -693,6 +696,8 @@ def main(argv: list[str] | None = None) -> int:
     pop = sub.add_parser("backtest-popular", help="popular strategies batch 1: stage A (untouched) / B (options)")
     pop.add_argument("--stage", choices=["A", "B"], default="A")
     pop.add_argument("--setups", default="")
+    pop.add_argument("--start", default="", help="stage B window start YYYY-MM-DD (default 2023-12-01)")
+    pop.add_argument("--end", default="", help="stage B window end YYYY-MM-DD (default 2026-09-30)")
     pop.set_defaults(fn=cmd_backtest_popular)
     sub.add_parser("backtest-magnitude", help="can big-move days be predicted by 09:30? (measurement)").set_defaults(
         fn=cmd_backtest_magnitude)

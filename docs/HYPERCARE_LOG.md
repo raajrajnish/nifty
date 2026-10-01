@@ -16,6 +16,25 @@ Measured on NIFTY index data from Oct 2021 – Nov 2023, which was never used to
 
 The magnitude study (same untouched data) adds that **a narrow opening range predicts SMALLER moves.** On narrow-OR days the rest of the day was "big" only 20.7% of the time, against 46.7% on wide-OR days. G1 trades only narrow-OR days. If G1 struggles in hypercare, this is the first suspect; any fix becomes **G1.v2**, a new forward count.
 
+## Bank Nifty cross-check (2026-10-02, pre-declared: `docs/reports/2026-10-01_banknifty_g_validation.md`)
+
+The same G1/G2 rules on Bank Nifty (never used before) **do not work**:
+- **Direction, clean 2021–23:**
+  - G1 43.6% right vs random 52.9%;
+  - G2 51.3% vs random 52.9%.
+  - Neither beats random.
+- **Option P&L, Dec 2023 – Sep 2026:**
+  - G1 **−₹876/trade (95% CI [−1,666, −78], reliably negative)**;
+  - G2 −₹40/trade, no better than random.
+- **Monthly-options period:** both negative.
+
+**Reading:**
+1. This is the **second independent check G1 fails** (after untouched Nifty 2021–23).
+2. G2 holds on untouched Nifty but not on Bank Nifty.
+3. As pre-declared, **this does not change the Nifty G1/G2 rules** (owner rule: each setup is judged on its own index).
+4. It **raises the bar for G1 in hypercare**: if G1's forward results are weak, a stop-early review should come sooner rather than later.
+5. BN-G1/BN-G2 are **rejected** as Bank Nifty setups.
+
 ## Open observations (to check over more days)
 
 1. **The live opening range can differ by 1–2 pts from Groww's official candles.** Live 22,509.65–22,589.05 vs official 22,508.35–22,589.35 on 2026-10-01. Live bars are built from 2-second snapshots and can miss the exact extremes. **Risk:** a breakout decided by 1–2 pts could differ from the backtest. Track each G1 day; if it ever changes a decision, consider building the OR from Groww's 1-minute candles at 09:30.

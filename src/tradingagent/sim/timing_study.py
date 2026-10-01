@@ -169,7 +169,7 @@ def bootstrap_ci(v: np.ndarray, runs: int = 5000, seed: int = 1) -> tuple[float,
     return float(np.quantile(bs, 0.025)), float(np.quantile(bs, 0.975)), float((bs <= 0).mean())
 
 
-def summarize_timing(trades: pd.DataFrame) -> pd.DataFrame:
+def summarize_timing(trades: pd.DataFrame, min_n: int = 100) -> pd.DataFrame:
     out = []
     for name, g in trades.groupby("variant"):
         m = metrics(g)
@@ -180,7 +180,7 @@ def summarize_timing(trades: pd.DataFrame) -> pd.DataFrame:
         ex_top5 = float(top.iloc[5:].mean()) if len(top) > 5 else None
         exp2 = float(g["net2_inr"].mean())
         lo, hi, p0 = bootstrap_ci(g["net_inr"].to_numpy())
-        ok = (m["n"] >= 100 and all(v is not None and v > 0 for v in parts.values()) and exp2 > 0
+        ok = (m["n"] >= min_n and all(v is not None and v > 0 for v in parts.values()) and exp2 > 0
               and (m.get("pf") or 0) >= 1.10 and all(v is not None and v > 0 for v in halves.values()))
         robust = ok and all(v is not None and v > 0 for v in sides.values()) and (ex_top5 or 0) > 0
         failed = g["reason"].isin(["STOP", "OR_OPPOSITE_SIDE"]).mean()

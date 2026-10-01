@@ -175,7 +175,7 @@ def cmd_fetch_history(args: argparse.Namespace) -> int:
     try:
         dl.download_index(args.underlying, start, end)
         if not args.index_only:
-            dl.download_options(args.underlying, start, end, strikes_each_side=args.strikes)
+            dl.download_options(args.underlying, start, end, strikes_each_side=args.strikes, step=args.step)
     except KeyboardInterrupt:
         log("interrupted — rerun the same command to resume (stored days are skipped)")
     except FetchAborted as e:
@@ -576,6 +576,110 @@ def cmd_backtest_magnitude(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest_inside(args: argparse.Namespace) -> int:
+    from datetime import date, datetime
+
+    import pandas as pd
+
+    from tradingagent.data.store import MarketStore
+    from tradingagent.sim import inside_day_study as ins
+    from tradingagent.sim.costs import CostModel
+    from tradingagent.sim.discovery_study import load_expiries, summarize_a
+    from tradingagent.sim.timing_study import summarize_timing
+
+    nf_exp = load_expiries(ROOT / "data" / "expiries" / "NIFTY.csv")
+    bn_exp = load_expiries(ROOT / "data" / "expiries" / "BANKNIFTY.csv")
+    out = ROOT / "data" / "reports" / "backtests" / f"inside_{args.stage}_{datetime.now():%Y%m%d_%H%M}"
+    out.mkdir(parents=True, exist_ok=True)
+    store = MarketStore(DB_PATH, read_only=True)
+    try:
+        with pd.option_context("display.width", 260, "display.max_columns", 30):
+            und = args.underlying
+            exp, step = (nf_exp, 50) if und == "NIFTY" else (bn_exp, 100)
+            if args.stage == "A":
+                for tag, s, e in (("DECIDES — untouched", date(2021, 11, 1), date(2023, 11, 30)),
+                                  ("info only", date(2023, 12, 1), date(2026, 9, 30))):
+                    a = ins.stage_a(store, und, exp, s, e, step)
+                    a.to_csv(out / f"stage_a_{und}_{s:%Y}.csv", index=False)
+                    print(f"=== {und} Stage A ({tag}): {s} → {e} (inside-open days; RANDOM = same days) ===")
+                    sa = summarize_a(a)
+                    print((sa if tag.startswith("DECIDES") else sa.drop(columns=["PASS_A"])).to_string(index=False))
+                    print()
+            else:
+                setups = [s for s in args.setups.split(",") if s]
+                lot = 65 if und == "NIFTY" else 30
+                costs = CostModel(load_config(ROOT / "config").costs)
+                windows = ([("DECIDES", date(2023, 12, 1), date(2026, 9, 30))] if und == "NIFTY" else
+                           [("DECIDES — monthly options", date(2024, 12, 1), date(2026, 9, 30)),
+                            ("info — weekly options", date(2023, 12, 1), date(2024, 11, 20))])
+                for tag, s, e in windows:
+                    t = ins.stage_b(store, costs, und, exp, setups, s, e, step, lot)
+                    t.to_csv(out / f"trades_{und}_{s:%Y%m}.csv", index=False)
+                    if t.empty:
+                        print(f"=== {und} Stage B ({tag}): no trades ===")
+                        continue
+                    min_n = 60 if (und == "BANKNIFTY" and tag.startswith("DECIDES")) else 100
+                    print(f"=== {und} Stage B ({tag}): {s} → {e}, ₹ at lot {lot}, PASS needs n ≥ {min_n} ===")
+                    print(summarize_timing(t, min_n).drop(columns=["median_delay_min"]).to_string(index=False) + "\n")
+    finally:
+        store.close()
+    print(f"\nWritten to {out}")
+    return 0
+
+
+def cmd_backtest_g_banknifty(args: argparse.Namespace) -> int:
+    from datetime import date, datetime
+
+    import pandas as pd
+
+    from tradingagent.data.store import MarketStore
+    from tradingagent.sim import banknifty_validation as bv
+    from tradingagent.sim.costs import CostModel
+    from tradingagent.sim.discovery_study import load_expiries, summarize_a
+    from tradingagent.sim.inside_day_study import resplit
+    from tradingagent.sim.timing_study import summarize_timing
+
+    bn_exp = load_expiries(ROOT / "data" / "expiries" / "BANKNIFTY.csv")
+    nf_exp = load_expiries(ROOT / "data" / "expiries" / "NIFTY.csv")
+    out = ROOT / "data" / "reports" / "backtests" / f"g_banknifty_{datetime.now():%Y%m%d_%H%M}"
+    out.mkdir(parents=True, exist_ok=True)
+    store = MarketStore(DB_PATH, read_only=True)
+    clean, overlap_era = (date(2021, 10, 1), date(2023, 11, 30)), (date(2023, 12, 1), date(2026, 9, 30))
+    try:
+        with pd.option_context("display.width", 260, "display.max_columns", 30):
+            for label, (s, e) in (("CLEAN 2021-23 (never used for anything)", clean),
+                                  ("2023-26 (overlaps the Nifty build period)", overlap_era)):
+                a = bv.stage_a(store, "BANKNIFTY", bn_exp, s, e, bv.BN_STEP)
+                a.to_csv(out / f"stage_a_{s:%Y}.csv", index=False)
+                print(f"=== STAGE A — Bank Nifty direction {label}: {s} → {e} ===")
+                print(summarize_a(a).to_string(index=False))
+                nf = bv.stage_a(store, "NIFTY", nf_exp, s, e, 50)
+                print("overlap with Nifty G-signals:\n" + bv.overlap(a, nf).to_string(index=False) + "\n")
+            if not args.skip_options:
+                t = bv.stage_b(store, CostModel(load_config(ROOT / "config").costs), "BANKNIFTY", bn_exp,
+                               *overlap_era, bv.BN_STEP, bv.BN_LOT)
+                t.to_csv(out / "trades.csv", index=False)
+                traded = t.dropna(subset=["net_inr"])
+                miss = int(t["net_inr"].isna().sum())
+                print(f"=== STAGE B — Bank Nifty options {overlap_era[0]} → {overlap_era[1]} "
+                      f"(₹ at lot {bv.BN_LOT}; {miss} signals had no option data) ===")
+                print(summarize_timing(traded).drop(columns=["median_delay_min"]).to_string(index=False))
+                print("\nR and % of premium per trade:")
+                print(traded.groupby("variant")[["r_net", "pct_prem"]].agg(["mean", "median"]).round(3).to_string())
+                for era, tag in (("monthly", "DECIDES BN-G1/BN-G2 (n ≥ 60 bar, smaller sample)"),
+                                 ("weekly", "info only")):
+                    sub = resplit(traded[traded["era"] == era])
+                    if len(sub):
+                        print(f"\n=== {era}-options era — {tag} (dev/val/test split within this era) ===")
+                        min_n = 60 if era == "monthly" else 100
+                        print(summarize_timing(sub, min_n).drop(columns=["median_delay_min"]).to_string(index=False))
+                        print(sub.groupby("variant")[["r_net", "pct_prem"]].mean().round(3).to_string())
+    finally:
+        store.close()
+    print(f"\nWritten to {out}")
+    return 0
+
+
 def cmd_backtest_internet(args: argparse.Namespace) -> int:
     from datetime import date, datetime
 
@@ -721,6 +825,7 @@ def main(argv: list[str] | None = None) -> int:
     fh.add_argument("--end", default=None)
     fh.add_argument("--underlying", default="NIFTY")
     fh.add_argument("--strikes", type=int, default=5, help="strikes beyond the week's ATM range, each side")
+    fh.add_argument("--step", type=int, default=50, help="strike step in index points (BANKNIFTY: 100)")
     fh.add_argument("--rps", type=float, default=4.0)
     fh.add_argument("--index-only", action="store_true")
     fh.set_defaults(fn=cmd_fetch_history)
@@ -745,6 +850,14 @@ def main(argv: list[str] | None = None) -> int:
     pop.add_argument("--start", default="", help="stage B window start YYYY-MM-DD (default 2023-12-01)")
     pop.add_argument("--end", default="", help="stage B window end YYYY-MM-DD (default 2026-09-30)")
     pop.set_defaults(fn=cmd_backtest_popular)
+    ins = sub.add_parser("backtest-inside", help="inside-day setups: stage A (Nifty untouched + Bank Nifty) / B")
+    ins.add_argument("--stage", choices=["A", "B"], default="A")
+    ins.add_argument("--setups", default="")
+    ins.add_argument("--underlying", choices=["NIFTY", "BANKNIFTY"], default="NIFTY")
+    ins.set_defaults(fn=cmd_backtest_inside)
+    gbn = sub.add_parser("backtest-g-banknifty", help="frozen G1/G2 on Bank Nifty (cross-instrument validation)")
+    gbn.add_argument("--skip-options", action="store_true", help="Stage A (index) only")
+    gbn.set_defaults(fn=cmd_backtest_g_banknifty)
     sub.add_parser("backtest-internet", help="internet strategies batch 2 (pre-declared, recent 2 years decide)"
                    ).set_defaults(fn=cmd_backtest_internet)
     sub.add_parser("backtest-magnitude", help="can big-move days be predicted by 09:30? (measurement)").set_defaults(

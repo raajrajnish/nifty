@@ -52,7 +52,7 @@ def follow(idx_day: pd.DataFrame, entry_ts: pd.Timestamp, side: str, minutes: in
 def build_trades(store: MarketStore, costs: CostModel, start: date | None = None) -> pd.DataFrame:
     """start: only trade days >= start (features still use all earlier history)."""
     expiries = [r[0] for r in store.con.execute(
-        "SELECT DISTINCT expiry FROM contracts WHERE kind='CE' ORDER BY expiry").fetchall()]
+        "SELECT DISTINCT expiry FROM contracts WHERE kind='CE' AND underlying='NIFTY' ORDER BY expiry").fetchall()]
     exp_set = set(expiries)
     idx = store.candles("NSE-NIFTY", "1minute")
     idx["day"] = idx["ts"].dt.date

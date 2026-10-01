@@ -116,7 +116,7 @@ def s2_fast(g: pd.DataFrame, d: date, expiries: list[date]) -> Entry | None:
 
 def run_timing_study(store: MarketStore, costs: CostModel) -> tuple[pd.DataFrame, pd.DataFrame]:
     expiries = [r[0] for r in store.con.execute(
-        "SELECT DISTINCT expiry FROM contracts WHERE kind='CE' ORDER BY expiry").fetchall()]
+        "SELECT DISTINCT expiry FROM contracts WHERE kind='CE' AND underlying='NIFTY' ORDER BY expiry").fetchall()]
     exp_set = set(expiries)
     idx = store.candles("NSE-NIFTY", "1minute")
     idx["day"] = idx["ts"].dt.date

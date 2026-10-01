@@ -209,7 +209,7 @@ def option_symbol(e: Entry) -> str:
 
 def build_entries(store: MarketStore) -> tuple[list[Entry], dict[date, pd.DataFrame]]:
     expiries = [r[0] for r in store.con.execute(
-        "SELECT DISTINCT expiry FROM contracts WHERE kind='CE' ORDER BY expiry").fetchall()]
+        "SELECT DISTINCT expiry FROM contracts WHERE kind='CE' AND underlying='NIFTY' ORDER BY expiry").fetchall()]
     idx = store.candles("NSE-NIFTY", "1minute")
     idx["day"] = idx["ts"].dt.date
     entries, by_day = [], {}

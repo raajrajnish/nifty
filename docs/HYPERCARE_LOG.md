@@ -16,6 +16,32 @@ Measured on NIFTY index data from Oct 2021 – Nov 2023, which was never used to
 
 The magnitude study (same untouched data) adds that **a narrow opening range predicts SMALLER moves.** On narrow-OR days the rest of the day was "big" only 20.7% of the time, against 46.7% on wide-OR days. G1 trades only narrow-OR days. If G1 struggles in hypercare, this is the first suspect; any fix becomes **G1.v2**, a new forward count.
 
+## ⚠️ Backtest correction: G2's "calm day" filter had a warm-up bug (found 2026-10-02)
+
+**What happened:** when G1/G2 were selected (logic study, 2026-10-01 12:44), the database's Nifty index history started only around late 2023.
+- G2's filter "ATR14 ≤ its 120-day median" could not be computed for the early option-data days (Dec 2023 – early 2024).
+- `ATR > NaN` evaluates to False, so those days were treated as **calm**.
+- With the full history (from Oct 2021, downloaded later), **those days were volatile, and G2 should not have traded them.**
+- Found by re-running the logic study after fixing an unrelated expiry-filter issue (the contracts table now holds Bank Nifty too).
+
+**Corrected backtest (Dec 2023 – Sep 2026, 1 lot):**
+
+| | Before | **Corrected** |
+|---|---|---|
+| G1 | 117 trades, +₹837/trade | **117, +₹833 — unchanged**, PASS and ROBUST |
+| G2 | 133 trades, +₹862/trade, PF 1.73 | **114, +₹300/trade, PF 1.24**, PASS (marginal); **not ROBUST** (−₹212 without its 5 best days); 95% CI [−374, 1,001] |
+
+- 19 of G2's removed trades were on volatile days, including some of its largest wins (20 Dec 2023, 8 Jan, 17 Jan and 23 Jan 2024).
+- **G2's untouched-data check (2021–23)** also had 14 early days without a computable median. Excluding them: right direction 54.8% vs random 54.2%; move at 15:10 +0.092 ATR, **CI [−0.002, 0.191], now just touching zero.**
+
+**The live paper engine is NOT affected:** it loads the full history from 2021, so the 120-day median is always computed. The rules are unchanged. Only the backtest *expectations* for G2 were overstated.
+
+**Consequences:**
+- G2's expected edge is about **₹300/trade, not ₹862.**
+- The monthly breakdown given to the owner on 2026-10-01 overstated Dec 2023 / Jan 2024 for G2.
+- The risk-study figures need re-running.
+- Overall: G1 is strong in-sample but fails both independent checks; G2 is weak in-sample and only borderline out of sample. **Neither has strong evidence now.**
+
 ## Bank Nifty cross-check (2026-10-02, pre-declared: `docs/reports/2026-10-01_banknifty_g_validation.md`)
 
 The same G1/G2 rules on Bank Nifty (never used before) **do not work**:

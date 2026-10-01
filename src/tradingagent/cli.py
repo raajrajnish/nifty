@@ -536,6 +536,46 @@ def cmd_backtest_discovery(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest_magnitude(_: argparse.Namespace) -> int:
+    from datetime import date, datetime
+
+    import pandas as pd
+
+    from tradingagent.data.store import MarketStore
+    from tradingagent.sim.discovery_study import load_expiries
+    from tradingagent.sim.magnitude_study import combined_score, day_table, evaluate, load
+
+    expiries = load_expiries(ROOT / "data" / "expiries" / "NIFTY.csv")
+    store = MarketStore(DB_PATH, read_only=True)
+    try:
+        idx, vix1, vixd = load(store)
+    finally:
+        store.close()
+    tbl = day_table(idx, vix1, vixd, expiries)
+    tbl = tbl[~tbl["expiry_day"]]
+    untouched = tbl[(tbl.index >= date(2021, 11, 1)) & (tbl.index <= date(2023, 11, 30))]  # 1 month ATR warm-up
+    seen = tbl[(tbl.index >= date(2023, 12, 1)) & (tbl.index <= date(2026, 9, 30))]
+    out = ROOT / "data" / "reports" / "backtests" / f"magnitude_{datetime.now():%Y%m%d_%H%M}"
+    out.mkdir(parents=True, exist_ok=True)
+    tbl.to_csv(out / "days.csv")
+    res = evaluate(untouched, seen)
+    res.to_csv(out / "predictors.csv", index=False)
+    with pd.option_context("display.width", 260, "display.max_columns", 20, "display.max_colwidth", 60):
+        print(f"days: untouched {len(untouched)} (2021-11 → 2023-11), 2023-26 {len(seen)}; expiry days excluded")
+        print(f"big-day cut (top third, untouched): range after 09:30 ≥ "
+              f"{untouched['range_after_atr'].quantile(2 / 3):.2f} × ATR14\n")
+        print(res.to_string(index=False))
+    passing = res[res["PASS"]]["predictor"].tolist()
+    if len(passing) >= 2:
+        signs = dict(zip(res["predictor"], res["rho_untouched"], strict=True))
+        cs = combined_score(untouched, seen, passing, signs)
+        print(f"\nCombined score of {passing} on 2023-26 only: {cs}")
+    else:
+        print(f"\nPassing predictors: {passing or 'none'} — fewer than 2, so no combined score (pre-declared).")
+    print(f"\nWritten to {out}")
+    return 0
+
+
 def cmd_forward_test(_: argparse.Namespace) -> int:
     from tradingagent.data.store import MarketStore
     from tradingagent.sim.costs import CostModel
@@ -609,6 +649,8 @@ def main(argv: list[str] | None = None) -> int:
     pp.add_argument("--replay", action="store_true", help="replay a recorded day instead of running live")
     pp.add_argument("--record", action="store_true", help="with --replay: also add the trades to the ledger")
     pp.set_defaults(fn=cmd_paper)
+    sub.add_parser("backtest-magnitude", help="can big-move days be predicted by 09:30? (measurement)").set_defaults(
+        fn=cmd_backtest_magnitude)
     dv = sub.add_parser("backtest-discovery", help="new-setup discovery: stage A (untouched data) / B (options)")
     dv.add_argument("--stage", choices=["A", "B"], default="A")
     dv.add_argument("--setups", default="", help="stage B: comma-separated setups that passed stage A")

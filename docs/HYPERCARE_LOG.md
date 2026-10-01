@@ -14,6 +14,8 @@ Measured on NIFTY index data from Oct 2021 – Nov 2023, which was never used to
 
 **Expectation for hypercare: G2 is the stronger candidate; G1 may underperform its backtest.** No rule change. This is context for judging the forward results.
 
+The magnitude study (same untouched data) adds that **a narrow opening range predicts SMALLER moves.** On narrow-OR days the rest of the day was "big" only 20.7% of the time, against 46.7% on wide-OR days. G1 trades only narrow-OR days. If G1 struggles in hypercare, this is the first suspect; any fix becomes **G1.v2**, a new forward count.
+
 ## Open observations (to check over more days)
 
 1. **The live opening range can differ by 1–2 pts from Groww's official candles.** Live 22,509.65–22,589.05 vs official 22,508.35–22,589.35 on 2026-10-01. Live bars are built from 2-second snapshots and can miss the exact extremes. **Risk:** a breakout decided by 1–2 pts could differ from the backtest. Track each G1 day; if it ever changes a decision, consider building the OR from Groww's 1-minute candles at 09:30.

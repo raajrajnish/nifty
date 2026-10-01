@@ -1,0 +1,13 @@
+# All times IST. Time-of-day rules are HYPOTHESES to be validated by testing (MASTER_PLAN §11).
+boot: "08:00"
+pre_market: {start: "08:15", end: "09:10"}
+market_open: "09:15"
+open_observe_end: "09:30"
+entry_window: {start: "09:30", end: "14:00"}
+square_off: "15:15"
+market_close: "15:30"
+post_market: "15:35"
+decision_interval: "5m"
+stale_seconds: 10
+disconnect_grace_seconds: 20
+agent_timeout_seconds: 90

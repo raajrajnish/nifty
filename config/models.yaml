@@ -1,0 +1,7 @@
+# Which Claude model for which agent/task (MASTER_PLAN §8 cadence and cost control).
+screen: claude-haiku-4-5-20251001
+manage: claude-sonnet-5-5
+entry: claude-opus-5-5
+risk_officer: claude-opus-5-5
+reviewer: claude-sonnet-5-5
+daily_budget_usd: 10        # placeholder — owner to confirm

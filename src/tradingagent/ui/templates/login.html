@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login · tradingagent</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-body">
+  <main class="login-card">
+    <h1>tradingagent</h1>
+    <p class="muted">Local dashboard · Nifty options · paper-first</p>
+    {% if not configured %}
+      <div class="banner warn">
+        No passphrase set yet. In a terminal run:<br>
+        <code>uv run tradingagent ui-set-passphrase</code>
+      </div>
+    {% else %}
+      <form id="login-form" autocomplete="off">
+        <label for="pp">Passphrase</label>
+        <input id="pp" type="password" required autofocus>
+        <button type="submit" class="btn primary">Log in</button>
+        <p id="login-error" class="error" hidden></p>
+        {% if locked %}<p class="error">Too many failed attempts. Wait 5 minutes.</p>{% endif %}
+      </form>
+    {% endif %}
+    <p class="muted small">This only logs you into the dashboard. Groww is connected separately each morning.</p>
+  </main>
+  <script>
+    const f = document.getElementById("login-form");
+    if (f) f.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const r = await fetch("/login", {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({passphrase: document.getElementById("pp").value})});
+      if (r.ok) { location.href = "/"; return; }
+      const err = document.getElementById("login-error");
+      err.textContent = (await r.json()).error || "Login failed"; err.hidden = false;
+    });
+  </script>
+</body>
+</html>

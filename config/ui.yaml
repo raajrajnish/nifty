@@ -1,0 +1,8 @@
+# Local dashboard. Binds to localhost only — do not expose to the network.
+# require_login: false skips the passphrase (development only). Refused by config validation in LIVE mode.
+# Host/Origin checks and CSRF tokens stay on either way.
+require_login: false
+host: 127.0.0.1
+port: 8750
+session_hours: 12
+approval_timeout_seconds: 60

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <title>tradingagent</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+  <!-- 1. top bar: is everything running? -->
+  <header class="topbar">
+    <b class="brand">tradingagent</b>
+    <span id="session" class="pill">—</span>
+    <span id="stage-mode" class="pill">—</span>
+    <span class="group" title="Groww login (daily token)"><span id="dot-groww" class="dot"></span>Groww</span>
+    <span class="group" title="Market-data recorder (read-only)"><span id="dot-rec" class="dot"></span>Recorder <span id="rec-text" class="muted small"></span></span>
+    <span class="group" title="G1/G2 paper engine"><span id="dot-engine" class="dot"></span>Paper engine</span>
+    <span id="clock" class="group mono">—</span>
+    <span class="spacer"></span>
+    <button id="btn-connect" class="btn small">Connect Groww</button>
+    {% if require_login %}<button id="btn-logout" class="btn small ghost">Log out</button>
+    {% else %}<span class="pill amber" title="ui.require_login is false (development). Refused in LIVE mode.">login off · dev</span>{% endif %}
+    <button id="btn-kill" class="btn danger">KILL</button>
+  </header>
+
+  <div id="halt-banner" class="banner danger" hidden><strong>HALTED</strong> — <span id="halt-reason"></span>.
+    <button id="btn-resume" class="btn small">Resume…</button></div>
+  <div id="broker-error" class="banner warn" hidden></div>
+  <div id="data-note" class="banner warn" hidden></div>
+
+  <main class="wrap">
+    <!-- 2. market now -->
+    <section>
+      <h2>Market now <span id="asof" class="muted small"></span></h2>
+      <div class="tiles">
+        <div class="tile"><div class="t-label">NIFTY 50</div><div id="m-nifty" class="t-big">—</div><div id="m-change" class="t-sub">—</div></div>
+        <div class="tile"><div class="t-label">Today's range</div><div id="m-range" class="t-big">—</div><div id="m-prev" class="t-sub">—</div></div>
+        <div class="tile"><div class="t-label">ATM strike</div><div id="m-atm" class="t-big">—</div><div id="m-atm-legs" class="t-sub">—</div></div>
+        <div class="tile"><div class="t-label">Lot size · cost of 1 lot</div><div id="m-lot" class="t-big">—</div><div id="m-lotcost" class="t-sub">—</div></div>
+        <div class="tile"><div class="t-label">India VIX</div><div id="m-vix" class="t-big">—</div><div class="t-sub">expected volatility</div></div>
+        <div class="tile"><div class="t-label">Weekly expiry used</div><div id="m-expiry" class="t-big">—</div><div id="m-expiry-sub" class="t-sub">—</div></div>
+      </div>
+    </section>
+
+    <!-- 3. account -->
+    <section>
+      <h2>Account <span class="tag warn">PAPER money</span> <span class="muted small">all limits are % of current equity</span></h2>
+      <div class="tiles">
+        <div class="tile"><div class="t-label">Money in account (equity)</div><div id="a-equity" class="t-big">—</div><div id="a-start" class="t-sub">—</div></div>
+        <div class="tile"><div class="t-label">Today's P&amp;L</div><div id="a-today" class="t-big">—</div><div id="a-today-sub" class="t-sub">—</div></div>
+        <div class="tile"><div class="t-label">Total P&amp;L since start</div><div id="a-total" class="t-big">—</div><div id="a-total-sub" class="t-sub">—</div></div>
+        <div class="tile"><div class="t-label">Can risk per trade</div><div id="a-risk" class="t-big">—</div><div id="a-risk-sub" class="t-sub">—</div></div>
+        <div class="tile"><div class="t-label">Max spend per position</div><div id="a-outlay" class="t-big">—</div><div id="a-outlay-sub" class="t-sub">—</div></div>
+        <div class="tile"><div class="t-label">Drawdown from peak</div><div id="a-dd" class="t-big">—</div><div id="a-dd-sub" class="t-sub">—</div>
+          <div class="meter"><div id="a-dd-bar" style="width:0%"></div></div></div>
+      </div>
+    </section>
+
+    <!-- 4. chart + can we trade -->
+    <section class="two-col">
+      <div class="card">
+        <div class="card-head">NIFTY today · 1-minute <span class="muted small">— yesterday's high/low (dashed) · opening range (dotted) · TWAP</span></div>
+        <div id="chart"><p id="chart-empty" class="muted pad">No live data yet — the chart fills in when the market is open and the recorder + paper engine are running.</p></div>
+      </div>
+      <div class="card">
+        <div class="card-head">If a setup fires now, how big?</div>
+        <p class="muted small">Paper trading always uses <b>1 lot</b>. This shows what your % limits would allow with real money at today's ATM premium.</p>
+        <div id="sizing"></div>
+      </div>
+    </section>
+
+    <!-- 5. setups -->
+    <section>
+      <h2>Setups today <span class="tag info-tag" title="Forward paper trading under close watch">HYPERCARE</span>
+        <span class="tag warn">PAPER ONLY · no real orders</span></h2>
+      <div class="setup-grid"><article class="setup" id="setup-G1"></article><article class="setup" id="setup-G2"></article></div>
+    </section>
+
+    <!-- 6. every trading day -->
+    <section class="two-col">
+      <div class="card">
+        <div class="card-head">Every trading day</div>
+        <div class="table-wrap"><table class="ledger">
+          <thead><tr><th>Day</th><th>Trades</th><th>Setups</th><th class="num">P&amp;L ₹</th><th class="num">P&amp;L %</th><th class="num">Equity after</th></tr></thead>
+          <tbody id="days"><tr><td colspan="6" class="muted">No paper trading days yet.</td></tr></tbody></table></div>
+        <p id="vs-backtest" class="muted small"></p>
+      </div>
+      <div class="card">
+        <div class="card-head">Paper trades</div>
+        <div class="table-wrap"><table class="ledger">
+          <thead><tr><th>Day</th><th>Setup</th><th>Contract</th><th>In → Out</th><th>Why out</th><th class="num">% premium</th><th class="num">Net ₹</th></tr></thead>
+          <tbody id="trades"><tr><td colspan="7" class="muted">No paper trades yet.</td></tr></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- 7. system log -->
+    <details class="card"><summary>System log</summary><ol id="feed" class="feed"></ol></details>
+  </main>
+
+  <dialog id="dlg-kill"><form method="dialog">
+    <h2>Kill switch</h2><p>Cancels orders, flattens positions and halts trading. Resuming needs a written reason.</p>
+    <label>Reason <input id="kill-reason" value="manual kill from dashboard"></label>
+    <label>Type <strong>KILL</strong> to confirm <input id="kill-confirm" autocomplete="off"></label>
+    <div class="row"><button value="cancel" class="btn ghost">Cancel</button><button id="kill-go" value="go" class="btn danger">Halt now</button></div>
+  </form></dialog>
+  <dialog id="dlg-resume"><form method="dialog">
+    <h2>Resume</h2><p>Resume returns to BOOT and re-runs all checks. Why is it safe?</p>
+    <label>Reason (min 5 chars) <input id="resume-reason"></label>
+    <div class="row"><button value="cancel" class="btn ghost">Cancel</button><button id="resume-go" value="go" class="btn primary">Resume</button></div>
+  </form></dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

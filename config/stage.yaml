@@ -1,0 +1,4 @@
+# Autonomy stage (MASTER_PLAN §4). Valid combos: S0/S1 => PAPER, S2/S3 => LIVE.
+# Stage changes must be committed and are logged at boot.
+stage: S0
+mode: PAPER

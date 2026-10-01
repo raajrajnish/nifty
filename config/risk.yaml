@@ -1,0 +1,32 @@
+# Source of truth for risk enforcement (MASTER_PLAN §12). Owner-confirmed 2026-09-29.
+# Values marked TBD are filled from Phase 1-4 evidence; boot refuses PAPER/LIVE while any are TBD.
+#
+# ALL LIMITS ARE PERCENTAGES (owner, 2026-10-01) — never fixed rupee amounts:
+#   * per-trade STOP        = % of the premium actually paid for the position (per setup: config/setups.yaml)
+#   * per-trade RISK budget = % of CURRENT equity
+#   * daily loss limit      = % of equity at the START of the day
+#   * weekly loss limit     = % of equity at the start of the week
+#   * drawdown kill         = % down from PEAK equity
+# equity = capital_inr (starting trading money) + all realised net P&L so far
+#          (paper: data/paper/live_trades.csv; live: broker funds — later).
+capital_inr: 200000              # starting trading money; limits follow equity, not this number
+capital_basis: equity            # equity | fixed  (fixed = always use capital_inr)
+per_trade_risk_pct: 1.0          # of equity. Evidence for G1/G2 at 1 lot suggests ~2.5% — owner decision pending
+max_premium_outlay_pct: 20       # of equity, per trade
+max_lots: 2
+max_open_positions: 1
+max_trades_per_day: 2
+consecutive_loss_pause: 2
+cooloff_minutes_after_stop: 30
+daily_loss_limit_pct: 3.0        # of start-of-day equity
+weekly_loss_limit_pct: 7.0       # of start-of-week equity
+max_spread_pct_of_premium: 3.0   # HYPOTHESIS
+min_contract_volume: TBD
+min_scorecard_total: TBD
+expiry_day:
+  allowed: false
+order_style: limit
+max_slippage_pct: TBD
+kill_criteria:
+  live_drawdown_pct_from_peak: 10   # of peak equity
+  live_trades_window: 30

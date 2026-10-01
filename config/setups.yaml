@@ -1,0 +1,57 @@
+# Machine-readable twin of playbook/03_setups.md (v1, frozen 2026-10-01). Status: FORWARD PAPER ONLY.
+# tests/unit/test_setups.py asserts these values match the code that produced the evidence.
+# Never edit a version in place — add a new version and retire the old one.
+version: 1
+frozen: "2026-10-01"
+status: FORWARD_PAPER_ONLY_HYPERCARE
+limits_basis:                     # all limits are percentages (owner, 2026-10-01)
+  stop: pct_of_premium_paid
+  per_trade_risk: pct_of_current_equity
+  daily_loss: pct_of_start_of_day_equity
+  drawdown_kill: pct_below_peak_equity
+common:
+  underlying: NIFTY
+  strike_step: 50
+  strike: ATM_ROUND_TO_STEP
+  expiry: NEAREST_WEEKLY_STRICTLY_AFTER_TODAY
+  skip_expiry_days: true
+  require_open_outside_prev_range: true
+  entry_fill: NEXT_MINUTE_OPEN_AT_ASK
+  time_exit: "15:10"
+  profit_lock: false
+  lots_in_evidence: 1
+setups:
+  G1:
+    name: Narrow-range opening breakout on open-outside day
+    opening_range: {start: "09:15", end_exclusive: "09:30"}
+    day_filter:
+      narrow_or_lookback_days: 20
+      narrow_or_min_days: 10
+    trigger:
+      bar_minutes: 5
+      first_bar_end_after: "09:30"
+      last_bar_end: "13:30"
+      long_if: close_above_or_high
+      short_if: close_below_or_low
+    stop_premium_pct: 50
+    invalidation: five_min_close_beyond_opposite_or_side
+    max_trades_per_day: 1
+    evidence: {trades: 117, net_per_trade_inr: 836.7, ex_top5_inr: 140.7, ci95_inr: [46, 1733]}
+  G2:
+    name: TWAP trend pullback on calm open-outside day
+    day_filter:
+      atr_days: 14
+      atr_median_lookback_days: 120
+      atr_median_min_days: 40
+      rule: atr14_pct_at_or_below_median
+    trigger:
+      bar_minutes: 5
+      first_bar_end: "10:00"
+      last_bar_end: "13:30"
+      twap: running_mean_of_1min_closes_since_0915
+      slope_lookback_minutes: 30
+      touch_tolerance: 0.0005
+    stop_premium_pct: 30
+    invalidation: none
+    max_trades_per_day: 1
+    evidence: {trades: 133, net_per_trade_inr: 862.0, ex_top5_inr: 198.6, ci95_inr: [88, 1715]}

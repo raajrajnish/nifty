@@ -1,0 +1,9 @@
+# Cross-check values only. At boot, lot/tick/expiry are loaded from Groww contract data;
+# any mismatch with these values halts boot. Every entry here is [VERIFY] until Phase 1.
+nifty:
+  underlying: NIFTY
+  exchange: NSE            # [VERIFY SDK constant]
+  segment: FNO             # [VERIFY SDK constant]
+  lot_size: 65             # [VERIFY]
+  tick_size: 0.05          # [VERIFY]
+  expiry_weekday: TUE      # [VERIFY]

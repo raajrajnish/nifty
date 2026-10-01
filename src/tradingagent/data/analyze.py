@@ -36,14 +36,15 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 def load_day(day_dir: Path) -> DayData:
     rows = _read_jsonl(day_dir / "ltp.jsonl")
     ltp = pd.DataFrame({
-        "ts": pd.to_datetime([r["recv_ts"] for r in rows]),
+        # ISO8601: Python omits ".ffffff" when microseconds are exactly 0, so formats are mixed (bug 2026-10-01)
+        "ts": pd.to_datetime([r["recv_ts"] for r in rows], format="ISO8601"),
         "nifty": [r["index"].get("NSE_NIFTY") for r in rows],
         "vix": [r["index"].get("NSE_INDIAVIX") for r in rows],
         "fut": [next((v for k, v in r["fno"].items() if k.endswith("FUT")), None) for r in rows],
     })
-    q = pd.DataFrame([{k: r.get(k) for k in ("recv_ts", "symbol", "bid", "ask", "bid_qty", "ask_qty", "ltp", "oi",
-                                              "volume", "last_trade_time")} for r in _read_jsonl(day_dir / "quotes.jsonl")])
-    q["ts"] = pd.to_datetime(q.pop("recv_ts"))
+    cols = ("recv_ts", "symbol", "bid", "ask", "bid_qty", "ask_qty", "ltp", "oi", "volume", "last_trade_time")
+    q = pd.DataFrame([{k: r.get(k) for k in cols} for r in _read_jsonl(day_dir / "quotes.jsonl")])
+    q["ts"] = pd.to_datetime(q.pop("recv_ts"), format="ISO8601")
     chain_rows = []
     for r in _read_jsonl(day_dir / "chain.jsonl"):
         ts = pd.Timestamp(r["recv_ts"])
@@ -79,10 +80,12 @@ def cadence(ts: pd.Series, expected_s: float) -> dict[str, Any]:
 
 
 def quote_quality(q: pd.DataFrame) -> dict[str, Any]:
-    both = q.dropna(subset=["bid", "ask"])
+    raw = q.dropna(subset=["bid", "ask"])
+    both = raw[(raw["bid"] > 0) & (raw["ask"] > 0)]  # 0/0 = empty pre-open book, not a crossed market
     ltt = pd.to_datetime(q["last_trade_time"], unit="s", utc=True, errors="coerce")
     lag = (q["ts"].dt.tz_convert("UTC") - ltt).dt.total_seconds()
-    return {"quotes": int(len(q)), "missing_bid_or_ask": int(len(q) - len(both)),
+    return {"quotes": int(len(q)), "missing_bid_or_ask": int(len(q) - len(raw)),
+            "empty_book": int(len(raw) - len(both)),
             "crossed_or_locked": int((both["bid"] >= both["ask"]).sum()),
             "per_symbol_min": int(q.groupby("symbol").size().min()), "symbols": int(q["symbol"].nunique()),
             "last_trade_age_s_median": round(float(lag.median()), 1),
@@ -246,7 +249,8 @@ def entry_test(q: pd.DataFrame, ltp: pd.DataFrame, chain: pd.DataFrame, lot: int
 
 
 def summarize_entries(e: pd.DataFrame, charge_scenarios: tuple[int, ...] = (50, 100)) -> dict[str, Any]:
-    res: dict[str, Any] = {"entries": int(len(e)), "median_spread_inr_per_lot": round(float(e["spread_inr"].median()), 1)}
+    res: dict[str, Any] = {"entries": int(len(e)),
+                           "median_spread_inr_per_lot": round(float(e["spread_inr"].median()), 1)}
     for h in (10, 25, 60):
         if f"mfe_{h}" not in e:
             continue

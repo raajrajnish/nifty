@@ -109,7 +109,8 @@ class HistoryDownloader:
             except Exception as e:  # transient 400s happen; retry with backoff
                 err = f"{type(e).__name__}: {str(e)[:160]}"
                 if any(m in err for m in FATAL_MARKERS):
-                    raise FetchAborted(f"Groww token expired/invalid — refresh it, then rerun to resume. ({err})") from e
+                    msg = f"Groww token expired/invalid — refresh it, then rerun to resume. ({err})"
+                    raise FetchAborted(msg) from e
                 self.sleep(1.0 * (attempt + 1))
         if err and any(m in err for m in NETWORK_MARKERS):
             self._network_failures += 1
@@ -179,13 +180,14 @@ class HistoryDownloader:
             if not hl:
                 continue
             strikes = strike_range(hl, step, strikes_each_side)
-            before = self.stats.candles
+            before, errors_before = self.stats.candles, self.stats.errors
             for k in strikes:
                 for side in ("CE", "PE"):
                     sym = option_symbol(underlying, exp, k, side)
                     self.store.upsert_contract(sym, underlying, side, exp, float(k))
                     self.download_range("FNO", sym, interval, win_start, win_end)
                     self.stats.contracts += 1
-            self.log(f"expiry {exp} ({win_start}..{win_end}): {len(strikes)} strikes x2, "
-                     f"+{self.stats.candles - before} candles | total req={self.stats.requests} "
-                     f"errors={self.stats.errors}")
+            if self.stats.candles > before or self.stats.errors > errors_before:  # quiet for already-stored weeks
+                self.log(f"expiry {exp} ({win_start}..{win_end}): {len(strikes)} strikes x2, "
+                         f"+{self.stats.candles - before} candles | total req={self.stats.requests} "
+                         f"errors={self.stats.errors}")

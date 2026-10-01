@@ -12,6 +12,23 @@ def _ts(seconds):
     return pd.Series(pd.to_datetime([T0 + timedelta(seconds=s) for s in seconds]))
 
 
+def test_load_day_handles_whole_second_timestamps(tmp_path):
+    """2026-10-01: a recv_ts of exactly hh:mm:ss.000000 is written without '.ffffff' and broke parsing."""
+    import json
+
+    from tradingagent.data.analyze import load_day
+
+    ltp = [{"recv_ts": "2026-10-01T09:57:08.123456+05:30", "index": {"NSE_NIFTY": 1.0}, "fno": {}},
+           {"recv_ts": "2026-10-01T09:57:09+05:30", "index": {"NSE_NIFTY": 2.0}, "fno": {}}]
+    quotes = [{"recv_ts": "2026-10-01T09:57:10+05:30", "symbol": "X"},
+              {"recv_ts": "2026-10-01T09:57:11.5+05:30", "symbol": "X"}]
+    chain = [{"recv_ts": "2026-10-01T09:57:00+05:30", "underlying_ltp": 1.0, "strikes": {}}]
+    for name, rows in (("ltp", ltp), ("quotes", quotes), ("chain", chain)):
+        (tmp_path / f"{name}.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    dd = load_day(tmp_path)
+    assert len(dd.ltp) == 2 and len(dd.quotes) == 2
+
+
 def test_cadence_counts_gaps():
     c = cadence(_ts([0, 2, 4, 6, 20, 22]), expected_s=2.0)
     assert c["median_gap_s"] == 2.0 and c["gaps_over_3x"] == 1 and c["max_gap_s"] == 14.0

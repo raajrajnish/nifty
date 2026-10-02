@@ -110,6 +110,63 @@ Step 1 (below) only re-tested the Nifty entry catalogue on Bank Nifty. The owner
 3. **Not present:** intraday momentum, first-hour persistence, breakout follow-through, relative-strength edge, or predictable trend days.
 4. **Not yet measurable:** heavyweight-stock lead (HDFC Bank and ICICI Bank are ≈ 50% of the index), and RBI-policy and bank-results days. These need the stock data and event dates.
 
+## Step B2: Bank Nifty gap-fill hypotheses (PRE-DECLARED 2026-10-02, before any test of them)
+
+Built on the one Bank Nifty-specific effect measured in B1: after a medium gap, the index is pulled back towards yesterday's close (PC).
+
+**Common rules:**
+- **Gap** = (09:15 open − PC) / PC.
+- Trade **towards PC**: a gap up → buy PE, a gap down → buy CE.
+- ATM monthly/weekly option (the nearest expiry); no expiry days; one trade per variant per day.
+- **Target:** the first index 1-min close at or beyond PC; exit at the next minute's open.
+- −50% premium disaster stop; time exit 15:10.
+- **If the gap has already filled before entry, there is no trade.**
+
+| Id | Gap size | Entry | Stop (index) |
+|---|---|---|---|
+| **GF1: open fade** | 0.2–1.0% | **09:20** (after the first 5 minutes) | 1-min close beyond **open ± 1 × gap distance**, i.e. the gap doubles away from PC |
+| **GF2: confirmed fade** | 0.2–1.0% | **09:30**, only if the 09:15–09:30 bar **closed on the PC side of the open** (the move towards the fill has started) | 5-min close beyond that first 15-min bar's extreme on the gap side |
+| **GF3: open fade, strongest bucket** | **0.2–0.5%** only | as GF1 | as GF1 |
+
+**Control:** RANDOM_gap. Same gap days (0.2–1.0%), entry at 09:20, random side (seeded per day), −50% stop, 15:10.
+
+### Step B3: test on the search window only (Dec 2023 – Sep 2025; ₹ at lot 30)
+**Advance to the lock boxes** if all of these hold:
+- n ≥ 60;
+- net/trade > 0;
+- positive at 2× costs;
+- PF ≥ 1.10;
+- **positive in the monthly-options period** (the product traded today);
+- both halves positive;
+- beats RANDOM_gap.
+
+At most **2** variants advance, the best by monthly-period net per trade. GF3 is a subset of GF1, so if both pass, only the better one advances.
+
+**Lock boxes** (rules already fixed above):
+- **Lock box 1:** options Oct 2025 – Sep 2026, n ≥ 40.
+- **Lock box 2:** index direction Nov 2021 – Nov 2023, PASS-A with n ≥ 80.
+
+### Step B3 result (run 2026-10-02 12:10, `bn_search_gapfill_20261002_1210`): NONE ADVANCE; the lock boxes stay sealed
+
+| Variant | n | Win | Net ₹/trade | Monthly period | Weekly period | Filled / stopped / 15:10 |
+|---|---:|---:|---:|---:|---:|---|
+| GF1 open fade | 147 | 46% | **−411** | −818 | −9 | 60 / 51 / 27 |
+| GF2 confirmed fade | 64 | 53% | −99 | −502 | +235 | 32 / 26 / 6 |
+| GF3 open fade, 0.2–0.5% | 89 | 44% | **−605** (CI entirely < 0) | −1,044 | −213 | 40 / 39 / 8 |
+| RANDOM_gap | 182 | 33% | −543 | −692 | −399 | — |
+
+**Why the measured pull did not pay:**
+- B1 counted "touches yesterday's close at any time by 15:10". A tradeable version needs the fill **before the stop.**
+- With a stop at the gap doubling, 35% of GF1 trades were stopped first, and filled trades earned less than stopped trades lost.
+- Calls (fading gap-downs) were the worst: −₹1,241/trade.
+- The monthly period, the product traded today, is negative for every variant.
+- **Verdict: rejected.** The rules are not re-tuned on the same data, so "a wider stop" is not tried here.
+
+### Bank Nifty status after B1–B3
+**No Bank Nifty-specific setup found yet.** Bank Nifty showed no exploitable intraday direction in the search window: no momentum, no persistence, breakouts are coin flips, and the gap pull doesn't survive a stop.
+
+**Remaining Bank Nifty-specific idea:** the heavyweight lead (HDFC Bank / ICICI Bank ≈ 50% of the index). It needs their 1-min data, which comes with the stock pilot. The lock boxes stay sealed for that.
+
 ## Step 1: entry study (this document; the same design as Nifty study #2)
 - **Entries (7):** ORB-15, ORB-30, TWAP pullback, EMA 9/21 cross, gap-and-go, gap-fade, random control. Definitions are identical to `sim/entry_study.py`; one per day.
 - **Exits (2, fixed):**

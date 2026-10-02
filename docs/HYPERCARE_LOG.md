@@ -42,6 +42,18 @@ The magnitude study (same untouched data) adds that **a narrow opening range pre
 - The risk-study figures need re-running.
 - Overall: G1 is strong in-sample but fails both independent checks; G2 is weak in-sample and only borderline out of sample. **Neither has strong evidence now.**
 
+## Independent review (Fable 5.1, 2026-10-02): `docs/reports/2026-10-02_independent_review.md`
+- **Findings:**
+  - no look-ahead or fill bias that flatters G1/G2;
+  - **G2's in-sample profit is not directional** (its own option +₹15 vs the opposite option −₹97 held to 15:10; the −30% stop makes the +₹300);
+  - G1 and G2 are largely one bet (daily correlation 0.84 on shared days);
+  - confirming either on paper needs ~130 (G1) / ~600 (G2) trades.
+- **Reviewer's recommendation:** retire G2, keep G1. **Owner decision (2026-10-02): keep BOTH on paper for now.**
+- **Engine fixes (owner approved; no G1/G2 rule changed):**
+  1. **Finding 5:** the 15:10 exit now also fires on quote ticks, and `finish_day()` closes any trade still open when the feed or recording ends (reason `EOD_NO_DATA`), so a trade can no longer go missing from the ledger.
+  2. **Finding 6:** history must end on the **previous trading day** (`config/market_holidays.yaml`); otherwise the day is skipped with a clear message. Unlisted holidays fail safe.
+  - Fidelity re-check 15/15; tests 200 pass.
+
 ## Bank Nifty cross-check (2026-10-02, pre-declared: `docs/reports/2026-10-01_banknifty_g_validation.md`)
 
 The same G1/G2 rules on Bank Nifty (never used before) **do not work**:

@@ -1,0 +1,34 @@
+# NSE trading holidays (weekdays with no session). Used by the paper engine to know the PREVIOUS TRADING DAY,
+# so it can refuse to trade when the stored history is stale (independent review 2026-10-02, finding 6).
+#
+# 2025 – Sep 2026: derived from the data (weekdays with no NIFTY 1-min candles in data/market.duckdb), plus
+# 2026-10-02 (owner-confirmed). FUTURE holidays must be added from NSE's official list
+# (nseindia.com → Resources → Exchange Communication → Holidays). If one is missing, the engine fails SAFE:
+# it skips the next day with a message telling you to add the holiday here.
+holidays:
+  - 2025-02-26
+  - 2025-03-14
+  - 2025-03-31
+  - 2025-04-10
+  - 2025-04-14
+  - 2025-04-18
+  - 2025-05-01
+  - 2025-08-15
+  - 2025-08-27
+  - 2025-10-02
+  - 2025-10-10
+  - 2025-10-22
+  - 2025-11-05
+  - 2025-12-25
+  - 2026-01-15
+  - 2026-01-26
+  - 2026-03-03
+  - 2026-03-26
+  - 2026-03-31
+  - 2026-04-03
+  - 2026-04-14
+  - 2026-05-01
+  - 2026-05-28
+  - 2026-06-26
+  - 2026-09-14
+  - 2026-10-02

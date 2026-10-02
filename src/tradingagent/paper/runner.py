@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import yaml
 
 from tradingagent.data.store import MarketStore
 from tradingagent.paper.engine import PaperEngine, feed, iter_recording
@@ -38,12 +39,22 @@ def expiry_from_recording(day_dir: Path) -> date | None:
     return date.fromisoformat(json.loads(first)["expiry"]) if first.strip() else None
 
 
+HOLIDAYS_FILE = Path(__file__).resolve().parents[3] / "config" / "market_holidays.yaml"
+
+
+def load_holidays(path: Path = HOLIDAYS_FILE) -> frozenset[date]:
+    if not path.exists():
+        return frozenset()
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return frozenset(d if isinstance(d, date) else date.fromisoformat(str(d)) for d in raw.get("holidays") or [])
+
+
 def make_engine(day: date, day_dir: Path, db_path: Path, costs: CostModel, equity: float = 200000.0) -> PaperEngine:
     expiry = expiry_from_recording(day_dir)
     if expiry is None:
         raise RuntimeError(f"no recorder chain data in {day_dir} yet")
     hist, vix = load_history(db_path)
-    eng = PaperEngine(day, hist, vix, expiry, costs, equity=equity)
+    eng = PaperEngine(day, hist, vix, expiry, costs, equity=equity, holidays=load_holidays())
     manifest = day_dir / "master.manifest.json"
     if manifest.exists():  # today's lot size from the Groww instrument master the recorder saved
         sizes = json.loads(manifest.read_text(encoding="utf-8")).get("option_lot_sizes") or []
@@ -81,6 +92,7 @@ def replay(day: date, day_dir: Path, db_path: Path, costs: CostModel, equity: fl
     engine = make_engine(day, day_dir, db_path, costs, equity)
     for ts, stream, r in iter_recording(day_dir):
         feed(engine, ts, stream, r)
+    engine.finish_day()               # a trade still open when the recording ends is closed and recorded
     return engine
 
 
@@ -135,5 +147,8 @@ def run_live(day: date, data_root: Path, db_path: Path, costs: CostModel, state_
         if now().time() >= stop_at:
             break
         _time.sleep(poll_s)
+    engine.finish_day()               # feed stopped with a trade open → close at last mark, write to ledger
+    append_ledger(ledger, engine.closed)
+    write_state(engine, state_path, {"engine_heartbeat": now().isoformat(timespec="seconds")})
     log(f"Paper engine stopped. Closed trades today: {len(engine.closed)}")
     return engine

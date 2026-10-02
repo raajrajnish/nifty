@@ -70,11 +70,19 @@ class MinuteBars:
         return df if before is None else df[df["ts"] < before].reset_index(drop=True)
 
 
+def previous_trading_day(day: date, holidays: frozenset[date] = frozenset()) -> date:
+    d = day - timedelta(days=1)
+    while d.weekday() >= 5 or d in holidays:
+        d -= timedelta(days=1)
+    return d
+
+
 class PaperEngine:
     def __init__(self, day: date, history: pd.DataFrame, vix_daily: pd.DataFrame, expiry: date,
-                 costs: CostModel, equity: float = 200000.0) -> None:
+                 costs: CostModel, equity: float = 200000.0, holidays: frozenset[date] = frozenset()) -> None:
         """history: stored NIFTY 1-min candles BEFORE `day`. equity: trading money at the start of the day —
-        trade risk and P&L are also reported as % of it (risk.yaml: all limits are percentages)."""
+        trade risk and P&L are also reported as % of it (risk.yaml: all limits are percentages).
+        holidays: NSE market holidays (config/market_holidays.yaml) — used to know the previous trading day."""
         self.day = day
         self.equity = equity
         self.lot_size = LOT                     # shown on the UI; runner sets it from the day's instrument master
@@ -92,9 +100,17 @@ class PaperEngine:
         self.s = {k: SetupState(k, summary=SUMMARIES[k]) for k in ("G1", "G2")}
         self._feats_ready = False
         self._g1_or: tuple[float, float] | None = None
+        # History must end on the PREVIOUS TRADING DAY, otherwise "yesterday" (PDH/PDL, OR median, ATR) is
+        # silently an older day (independent review 2026-10-02, finding 6). Fails safe: an unlisted holiday
+        # makes the engine skip the day with a clear message rather than trade on the wrong "yesterday".
         last_hist_day = self.hist["ts"].dt.date.max() if len(self.hist) else None
-        self.history_note = "" if last_hist_day and (day - last_hist_day).days <= 4 else \
-            f"history ends {last_hist_day} — run End of Day.cmd / fetch-history"
+        prev_td = previous_trading_day(day, holidays)
+        if last_hist_day is None or last_hist_day < prev_td:
+            self.history_note = (f"history ends {last_hist_day}, but the previous trading day is {prev_td} — run "
+                                 f"End of Day.cmd / fetch-history (if {prev_td} was a market holiday, add it to "
+                                 f"config/market_holidays.yaml)")
+        else:
+            self.history_note = ""
         if day == expiry:
             for st in self.s.values():
                 self._set(st, "SKIPPED", "Expiry day — no trades (risk.yaml expiry_day.allowed=false).")
@@ -147,6 +163,7 @@ class PaperEngine:
         self.last_ts = ts
         self.quotes[symbol] = {"bid": bid, "ask": ask, "ltp": ltp, "ts": ts}
         self._check_stops()
+        self._time_exit()
 
     def on_ltp(self, ts: datetime, index_px: float | None, fno: dict[str, float], vix: float | None = None) -> None:
         self.last_ts = ts
@@ -163,6 +180,23 @@ class PaperEngine:
             if finished is not None:
                 self._on_minute(finished)
         self._check_stops()
+        self._time_exit()
+
+    def _time_exit(self) -> None:
+        """15:10 exit driven by ANY event's clock, not only by completed index minutes: if the index feed
+        stops (as on 2025-09-26), quote/option ticks still close open trades (review finding 5)."""
+        if self.last_ts is None or self.last_ts.time() < time(15, 10):
+            return
+        for st in self.s.values():
+            if st.status == "IN_TRADE" and st.trade:
+                self._exit(st, "EOD_1510")
+
+    def finish_day(self) -> None:
+        """Called by the runner when the session/recording ends: any trade still open (no data at all after the
+        last tick) is closed at its last mark so it always reaches the ledger."""
+        for st in self.s.values():
+            if st.status == "IN_TRADE" and st.trade:
+                self._exit(st, "EOD_NO_DATA")
 
     # ---- per completed minute ------------------------------------------------------------------------
     def _on_minute(self, bar: dict[str, Any]) -> None:

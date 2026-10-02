@@ -127,3 +127,45 @@ def test_ledger_is_idempotent(tmp_path):
     append_ledger(led, [t])
     append_ledger(led, [t])
     assert led.read_text(encoding="utf-8").count("2026-03-18") == 1
+
+
+# ---- independent review 2026-10-02: findings 5 (feed stops before 15:10) and 6 (stale "yesterday") -------------
+BREAKOUT = [22880.0 + (k % 2) * 10 for k in range(15)] + [22895.0] * 5 + [22920.0] * 300   # index ends ~14:34
+CE_QUOTES = {k: ("NIFTY26M2422900CE", 99.5 + k * 0.1, 100.5 + k * 0.1) for k in range(0, 320)}
+
+
+def test_open_trade_closes_at_1510_on_quotes_when_index_feed_stops(engine):
+    run(engine, BREAKOUT, CE_QUOTES)
+    assert engine.s["G1"].status == "IN_TRADE"                       # no index minutes after ~14:34
+    engine.on_quote(datetime(DAY.year, DAY.month, DAY.day, 15, 9, 30), "NIFTY26M2422900CE", 130.0, 131.0, 130.5)
+    assert engine.s["G1"].status == "IN_TRADE"                       # 15:09:30 is still before 15:10
+    engine.on_quote(datetime(DAY.year, DAY.month, DAY.day, 15, 10, 2), "NIFTY26M2422900CE", 130.0, 131.0, 130.5)
+    assert engine.s["G1"].status == "DONE" and engine.s["G1"].trade["reason"] == "EOD_1510"
+    assert {t["setup"] for t in engine.closed} >= {"G1"}
+
+
+def test_finish_day_records_a_trade_left_open_with_no_late_data(engine):
+    run(engine, BREAKOUT, CE_QUOTES)
+    engine.finish_day()
+    g1 = engine.s["G1"]
+    assert g1.status == "DONE" and g1.trade["reason"] == "EOD_NO_DATA"
+    assert any(t["setup"] == "G1" and t["reason"] == "EOD_NO_DATA" for t in engine.closed)
+    engine.finish_day()                                              # idempotent: nothing closed twice
+    assert sum(t["setup"] == "G1" for t in engine.closed) == 1
+
+
+def test_stale_history_skips_the_day_unless_the_gap_was_a_holiday(cfg):
+    from tradingagent.paper.engine import previous_trading_day
+    thu = date(2026, 3, 19)                                          # history() ends Tue 2026-03-17
+    stale = PaperEngine(thu, history(), pd.DataFrame(columns=["ts", "close"]), EXP, CostModel(cfg.costs))
+    assert stale.s["G1"].status == "SKIPPED" and "previous trading day is 2026-03-18" in stale.s["G1"].log[-1]
+    ok = PaperEngine(thu, history(), pd.DataFrame(columns=["ts", "close"]), EXP, CostModel(cfg.costs),
+                     holidays=frozenset({date(2026, 3, 18)}))
+    assert ok.s["G1"].status != "SKIPPED" and ok.history_note == ""
+    assert previous_trading_day(date(2026, 10, 5), frozenset({date(2026, 10, 2)})) == date(2026, 10, 1)
+
+
+def test_holiday_file_loads_and_covers_2_october_2026():
+    from tradingagent.paper.runner import load_holidays
+    h = load_holidays()
+    assert date(2026, 10, 2) in h and date(2025, 12, 25) in h

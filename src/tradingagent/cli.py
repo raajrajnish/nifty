@@ -673,6 +673,30 @@ def cmd_bn_search(args: argparse.Namespace) -> int:
     out = ROOT / "data" / "reports" / "backtests" / f"bn_search_{args.step}_{datetime.now():%Y%m%d_%H%M}"
     out.mkdir(parents=True, exist_ok=True)
     store = MarketStore(DB_PATH, read_only=True)
+    if args.step == "heavy":
+        from tradingagent.sim import bn_heavy as bh
+        from tradingagent.sim.discovery_study import summarize_a
+        from tradingagent.sim.inside_day_study import resplit
+        from tradingagent.sim.timing_study import summarize_timing
+        try:
+            bs.check_window(bs.SEARCH_START, bs.SEARCH_END)
+            a, t = bh.run(store, CostModel(load_config(ROOT / "config").costs), bs.SEARCH_START, bs.SEARCH_END)
+        finally:
+            store.close()
+        a.to_csv(out / "direction.csv", index=False)
+        t = resplit(t)
+        t.to_csv(out / "trades.csv", index=False)
+        with pd.option_context("display.width", 260, "display.max_columns", 30):
+            print(f"=== Bank Nifty heavyweight lead (B5), search window {bs.SEARCH_START} → {bs.SEARCH_END} ===")
+            print("direction (HEAVY = follow HDFCBANK+ICICIBANK when D ≥ 0.25%):")
+            print(summarize_a(a).to_string(index=False))
+            print(f"\noption P&L (lot {bs.LOT}); HL1 = hold to 15:10, HL2 = exit after 60 min:")
+            print(summarize_timing(t, 60).drop(columns=["median_delay_min"]).to_string(index=False))
+            print("\nby options era (net ₹/trade, n):")
+            print(t.pivot_table(index="variant", columns="era", values="net_inr", aggfunc=["mean", "size"])
+                  .round(1).to_string())
+        print(f"\nWritten to {out}")
+        return 0
     if args.step == "gapfill":
         from tradingagent.sim import bn_gapfill as gf
         from tradingagent.sim.inside_day_study import resplit
@@ -996,7 +1020,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("bn-behaviour", help="Bank Nifty behaviour study (measurement only, search window)"
                    ).set_defaults(fn=cmd_bn_behaviour)
     bns = sub.add_parser("bn-search", help="Bank Nifty setup search (search window only; lock boxes refused)")
-    bns.add_argument("--step", choices=["entries", "gapfill"], default="entries")
+    bns.add_argument("--step", choices=["entries", "gapfill", "heavy"], default="entries")
     bns.set_defaults(fn=cmd_bn_search)
     ins = sub.add_parser("backtest-inside", help="inside-day setups: stage A (Nifty untouched + Bank Nifty) / B")
     ins.add_argument("--stage", choices=["A", "B"], default="A")

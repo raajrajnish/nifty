@@ -167,6 +167,64 @@ At most **2** variants advance, the best by monthly-period net per trade. GF3 is
 
 **Remaining Bank Nifty-specific idea:** the heavyweight lead (HDFC Bank / ICICI Bank ≈ 50% of the index). It needs their 1-min data, which comes with the stock pilot. The lock boxes stay sealed for that.
 
+## Step B5: heavyweight lead (PRE-DECLARED 2026-10-02, before looking at any HDFC Bank/ICICI Bank vs Bank Nifty data)
+
+**Idea (Bank Nifty-specific):** HDFC Bank and ICICI Bank are about half of Bank Nifty. When they have moved **more** than Bank Nifty over the last 30 minutes, the rest of the index catches up, so **Bank Nifty follows the heavyweights.**
+
+**Hypothesis direction is fixed:** follow the heavyweights. If the data shows the opposite (Bank Nifty reverts towards them), that is recorded as a *new* hypothesis needing its own test. The sign is **not** flipped on the same data.
+
+**Signal (5-min bars labelled by end time, 09:45–13:30; first signal of the day; no expiry days):**
+- Basket return = the average of HDFCBANK and ICICIBANK % returns over the last 30 min.
+- D = basket return − Bank Nifty % return over the same 30 min.
+- **D ≥ +0.25% → Bank Nifty CE; D ≤ −0.25% → Bank Nifty PE.**
+- Stock data cleaning: the 2025-05-12 ×100 prints are repaired and that day is excluded. Split ex-dates are excluded (30-min returns are otherwise unaffected).
+
+| Id | Exit |
+|---|---|
+| **HL1** | Hold to 15:10; −50% premium disaster stop |
+| **HL2** | Exit after **60 minutes** (lead-lag effects are usually short); −50% disaster stop |
+
+**Control:** RANDOM: the same days, random 5-min bar in 09:45–13:30, random side.
+
+**Search-window tests (Dec 2023 – Sep 2025):**
+- **Direction:**
+  - n ≥ 80;
+  - right after 60 min ≥ random + 3 pts;
+  - mean move in ATR units > 0 with the CI above 0 (at +60 min for HL2; at 15:10 for HL1).
+- **Option P&L (lot 30):**
+  - n ≥ 60;
+  - net > 0;
+  - positive at 2× costs;
+  - PF ≥ 1.10;
+  - monthly period positive;
+  - beats RANDOM.
+- Pass both → go to the lock boxes (rules already fixed above). **Lock box 2** uses HDFC Bank/ICICI Bank/Bank Nifty data from Nov 2021 – Nov 2023, which is held.
+
+### Step B5 result (run 2026-10-02 12:53, `bn_search_heavy_20261002_1253`): FAIL; the lock boxes stay sealed
+
+**Direction:**
+- HEAVY: n = 222; right after 60 min **47.7%, identical to random (47.7%)**; move at +60 min −0.014 ATR; at 15:10 +0.035 [−0.055, 0.118] vs random +0.036.
+- **No lead effect at all.** When the heavyweights pull ahead, Bank Nifty does not follow (and does not clearly revert either).
+
+**Options:**
+- **HL1:** +₹285/trade overall (PF 1.15). But validate −108, test −202, and the **monthly period −₹299**, so it fails.
+- **HL2:** −₹163.
+- **Random:** −₹98.
+
+## Bank Nifty search: conclusion (2026-10-02)
+Five Bank Nifty-specific lines were tested on the search window only, with the lock boxes never opened:
+1. Nifty's entry catalogue (step 1);
+2. own-behaviour measurement (B1);
+3. gap fill (B2/B3);
+4. option-timing economics (B1 addendum);
+5. heavyweight lead (B5).
+
+**No Bank Nifty intraday setup qualifies.** What was learned and remains useful:
+- Monthly options are cheap to hold intraday (≈ 2% decay; break-even ≈ 30 index pts).
+- Bank Nifty showed no intraday momentum, no first-hour persistence, coin-flip breakouts, a gap pull that doesn't survive a stop, and no heavyweight lead.
+
+**The lock boxes (Oct 2025 – Sep 2026 options; 2021–23 index) remain unused** and available for any future pre-declared Bank Nifty idea.
+
 ## Step 1: entry study (this document; the same design as Nifty study #2)
 - **Entries (7):** ORB-15, ORB-30, TWAP pullback, EMA 9/21 cross, gap-and-go, gap-fade, random control. Definitions are identical to `sim/entry_study.py`; one per day.
 - **Exits (2, fixed):**

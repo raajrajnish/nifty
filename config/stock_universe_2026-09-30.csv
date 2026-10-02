@@ -1,0 +1,11 @@
+symbol,company,industry,first_day,avg_traded_value_cr,rank_days,rank,eligible,selected
+HDFCBANK,HDFC Bank Ltd.,Financial Services,2021-10-01,3020.3,64,1,True,True
+RELIANCE,Reliance Industries Ltd.,Oil Gas & Consumable Fuels,2021-10-01,2044.0,64,2,True,True
+ICICIBANK,ICICI Bank Ltd.,Financial Services,2021-10-01,1997.3,64,3,True,True
+BSE,BSE Ltd.,Financial Services,2021-10-01,1947.7,64,4,True,True
+BHARTIARTL,Bharti Airtel Ltd.,Telecommunication,2021-10-01,1640.9,64,5,True,True
+INFY,Infosys Ltd.,Information Technology,2021-10-01,1542.5,64,6,True,True
+SBIN,State Bank of India,Financial Services,2021-10-01,1358.9,64,7,True,True
+TCS,Tata Consultancy Services Ltd.,Information Technology,2021-10-01,1052.6,64,9,True,True
+BAJFINANCE,Bajaj Finance Ltd.,Financial Services,2021-10-01,1027.5,64,10,True,True
+AXISBANK,Axis Bank Ltd.,Financial Services,2021-10-01,965.4,64,11,True,True

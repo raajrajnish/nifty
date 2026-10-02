@@ -576,6 +576,59 @@ def cmd_backtest_magnitude(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest_stocks(args: argparse.Namespace) -> int:
+    import csv
+    from datetime import datetime
+
+    import pandas as pd
+
+    from tradingagent.data.store import MarketStore
+    from tradingagent.sim import stock_study as ss
+
+    syms = [r["symbol"] for r in csv.DictReader((ROOT / "config" / "stock_universe_2026-09-30.csv").open())]
+    out = ROOT / "data" / "reports" / "backtests" / f"stocks_{datetime.now():%Y%m%d_%H%M}"
+    out.mkdir(parents=True, exist_ok=True)
+    store = MarketStore(DB_PATH, read_only=True)
+    parts, events, drift = [], [], []
+    try:
+        nifty = store.candles("NSE-NIFTY", "1minute")
+        for s in syms:
+            m1 = store.candles(f"NSE-{s}", "1minute")
+            if m1.empty:
+                print(f"{s}: no 1-minute data")
+                continue
+            t, ev = ss.run_stock(s, m1, nifty, ss.EquityIntradayCosts())
+            parts.append(t)
+            events += [{"symbol": s, **e} for e in ev]
+            adj = ss.adjust_splits(ss.clean_bad_prints(m1)[0])[0]
+            dly = adj.groupby("day")["close"].last()
+            for p, (a, b) in ss.PERIODS.items():
+                w = dly[(dly.index >= a) & (dly.index <= b)]
+                drift.append({"symbol": s, "period": p, "buy_hold_%": round((w.iloc[-1] / w.iloc[0] - 1) * 100, 1)})
+            print(f"{s}: {len(t)} trades, ex-dates {[(str(e['day']), e['ratio']) for e in ev]}", flush=True)
+    finally:
+        store.close()
+    trades = pd.concat(parts, ignore_index=True)
+    trades.to_csv(out / "trades.csv", index=False)
+    v = ss.verdicts(trades)
+    v.to_csv(out / "verdicts.csv", index=False)
+    with pd.option_context("display.width", 300, "display.max_columns", 40, "display.max_rows", 100):
+        print("\n=== split/bonus ex-dates found (excluded; earlier prices back-adjusted) ===")
+        print(pd.DataFrame(events).to_string(index=False) if events else "none")
+        print("\n=== stock drift (buy & hold, info) ===")
+        print(pd.DataFrame(drift).pivot(index="symbol", columns="period", values="buy_hold_%").to_string())
+        cols = ["symbol", "setup", "P1_n", "P1_net%", "P1_ci95%", "P1_pf", "P1_PASS",
+                "P2_n", "P2_net%", "P2_ci95%", "P2_pf", "P2_PASS", "PASS_both", "ROBUST"]
+        print("\n=== per stock × setup: P1 = Oct 2021–Sep 2024, P2 = Oct 2024–Sep 2026 (net % per trade on ₹1L) ===")
+        print(v[cols].to_string(index=False))
+        rnd = trades[trades["setup"] == "RANDOM"].groupby(["symbol", "period"])["net"].mean().div(ss.NOTIONAL / 100)
+        print("\nRANDOM control net % per trade:\n" + rnd.round(3).unstack().to_string())
+        print(f"\nPASS both periods: {int(v['PASS_both'].sum())} of {len(v)} | ROBUST: {int(v['ROBUST'].sum())}"
+              f"  (expected by luck ≈ 0.1)")
+    print(f"\nWritten to {out}")
+    return 0
+
+
 def cmd_bn_behaviour(_: argparse.Namespace) -> int:
     import pandas as pd
 
@@ -938,6 +991,8 @@ def main(argv: list[str] | None = None) -> int:
     pop.add_argument("--start", default="", help="stage B window start YYYY-MM-DD (default 2023-12-01)")
     pop.add_argument("--end", default="", help="stage B window end YYYY-MM-DD (default 2026-09-30)")
     pop.set_defaults(fn=cmd_backtest_popular)
+    sub.add_parser("backtest-stocks", help="stock intraday pilot (frozen 10 stocks, two untouched periods)"
+                   ).set_defaults(fn=cmd_backtest_stocks)
     sub.add_parser("bn-behaviour", help="Bank Nifty behaviour study (measurement only, search window)"
                    ).set_defaults(fn=cmd_bn_behaviour)
     bns = sub.add_parser("bn-search", help="Bank Nifty setup search (search window only; lock boxes refused)")

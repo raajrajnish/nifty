@@ -576,6 +576,42 @@ def cmd_backtest_magnitude(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bn_search(args: argparse.Namespace) -> int:
+    from datetime import datetime
+
+    import pandas as pd
+
+    from tradingagent.data.store import MarketStore
+    from tradingagent.sim import banknifty_search as bs
+    from tradingagent.sim.costs import CostModel
+
+    out = ROOT / "data" / "reports" / "backtests" / f"bn_search_{args.step}_{datetime.now():%Y%m%d_%H%M}"
+    out.mkdir(parents=True, exist_ok=True)
+    store = MarketStore(DB_PATH, read_only=True)
+    try:
+        trades, summary = bs.run_entry_study(store, CostModel(load_config(ROOT / "config").costs))
+    finally:
+        store.close()
+    trades.to_csv(out / "trades.csv", index=False)
+    summary.to_csv(out / "summary.csv", index=False)
+    traded = trades.dropna(subset=["net_inr"])
+    miss = int(trades["net_inr"].isna().sum())
+    print(f"=== Bank Nifty search, step 1 (entries), {bs.SEARCH_START} → {bs.SEARCH_END}, ₹ at lot {bs.LOT} ===")
+    print(f"trades: {len(traded)} | signals without option data: {miss}")
+    cols = ["entry", "exit", "filter", "n", "win", "net", "net_2x", "pf", "dev", "val", "test", "H1", "H2",
+            "CE", "PE", "ex_top5", "PASS", "ROBUST"]
+    with pd.option_context("display.width", 260, "display.max_columns", 30, "display.max_rows", 300):
+        print("\n--- unfiltered, by entry and exit ---")
+        print(summary[summary["filter"] == "all"][cols].to_string(index=False))
+        print("\n--- top 25 cells with n >= 100 ---")
+        print(summary[summary["n"] >= 100].head(25)[cols].to_string(index=False))
+        print(f"\nPASS cells: {int(summary['PASS'].sum())} | ROBUST cells: {int(summary['ROBUST'].sum())} "
+              f"(of {len(summary)}; ~5% would pass by chance)")
+        print(summary[summary["PASS"]][cols].to_string(index=False))
+    print(f"\nWritten to {out}")
+    return 0
+
+
 def cmd_backtest_inside(args: argparse.Namespace) -> int:
     from datetime import date, datetime
 
@@ -850,6 +886,9 @@ def main(argv: list[str] | None = None) -> int:
     pop.add_argument("--start", default="", help="stage B window start YYYY-MM-DD (default 2023-12-01)")
     pop.add_argument("--end", default="", help="stage B window end YYYY-MM-DD (default 2026-09-30)")
     pop.set_defaults(fn=cmd_backtest_popular)
+    bns = sub.add_parser("bn-search", help="Bank Nifty setup search (search window only; lock boxes refused)")
+    bns.add_argument("--step", choices=["entries"], default="entries")
+    bns.set_defaults(fn=cmd_bn_search)
     ins = sub.add_parser("backtest-inside", help="inside-day setups: stage A (Nifty untouched + Bank Nifty) / B")
     ins.add_argument("--stage", choices=["A", "B"], default="A")
     ins.add_argument("--setups", default="")

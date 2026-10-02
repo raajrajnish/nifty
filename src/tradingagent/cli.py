@@ -576,6 +576,61 @@ def cmd_backtest_magnitude(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest_swing(args: argparse.Namespace) -> int:
+    import csv
+    from datetime import datetime
+
+    import pandas as pd
+
+    from tradingagent.data.store import MarketStore
+    from tradingagent.sim import swing_study as sw
+
+    syms = [r["Symbol"] for r in csv.DictReader((ROOT / "data" / "universe" / "ind_nifty50list.csv").open())]
+    out = ROOT / "data" / "reports" / "backtests" / f"swing_{datetime.now():%Y%m%d_%H%M}"
+    out.mkdir(parents=True, exist_ok=True)
+    costs = sw.DeliveryCosts()
+    store = MarketStore(DB_PATH, read_only=True)
+    data, rows, fills = {}, [], []
+    try:
+        for s in syms:
+            raw = store.candles(f"NSE-{s}", "1day")
+            if raw.empty:
+                print(f"{s}: no daily data")
+                continue
+            intra = store.candles(f"NSE-{s}", "1minute")
+            if intra.empty:
+                intra = store.candles(f"NSE-{s}", "15minute")
+            raw, fill = sw.rebuild_from_intraday(raw, intra)
+            fills.append({"symbol": s, **fill})
+            d, ex = sw.prepare(raw)
+            data[s] = d
+            for name in sw.SETUPS:
+                rows += sw.run_signal_setup(s, d, ex, name, costs)
+    finally:
+        store.close()
+    t = pd.DataFrame(rows)
+    t["rand_pct"] = sw.matched_random(t, data, costs)
+    t["excess_pct"] = t["net_pct"] - t["rand_pct"]
+    t.to_csv(out / "trades.csv", index=False)
+    rot = sw.momentum_rotation(data, costs)
+    rot.to_csv(out / "rotation.csv", index=False)
+    with pd.option_context("display.width", 260, "display.max_columns", 30):
+        f = pd.DataFrame(fills)
+        m = f["pre2025_open_match_0.05%"].dropna()
+        print("=== data check: 2025+ daily bars rebuilt from intraday (Groww daily open broken from 2025) ===")
+        print(f"rebuilt {int(f['rebuilt'].sum())} stock-days, dropped {int(f['dropped'].sum())}; pre-2025 daily open "
+              f"= first intraday trade (±0.05%) on {m.min()}–{m.max()}% of {int(f['checked_pre2025'].sum())} days")
+        print(f"\n=== Swing study, Nifty 50 basket ({len(data)} stocks), net % per trade on ₹1 lakh ===")
+        print(sw.verdict_signal(t).to_string(index=False))
+        for name, g in t.groupby("setup"):
+            exits = g["reason"].value_counts().to_dict()
+            print(f"{name}: max concurrent positions {sw.max_concurrent(g)}; exits {exits}")
+        print("\n=== SW3 momentum rotation (top 5 vs equal-weight all) ===")
+        print(sw.verdict_rotation(rot).to_string(index=False))
+    print(f"\nWritten to {out}")
+    return 0
+
+
 def cmd_backtest_stocks(args: argparse.Namespace) -> int:
     import csv
     from datetime import datetime
@@ -1015,6 +1070,8 @@ def main(argv: list[str] | None = None) -> int:
     pop.add_argument("--start", default="", help="stage B window start YYYY-MM-DD (default 2023-12-01)")
     pop.add_argument("--end", default="", help="stage B window end YYYY-MM-DD (default 2026-09-30)")
     pop.set_defaults(fn=cmd_backtest_popular)
+    sub.add_parser("backtest-swing", help="swing study on the Nifty 50 basket (daily bars, long only)"
+                   ).set_defaults(fn=cmd_backtest_swing)
     sub.add_parser("backtest-stocks", help="stock intraday pilot (frozen 10 stocks, two untouched periods)"
                    ).set_defaults(fn=cmd_backtest_stocks)
     sub.add_parser("bn-behaviour", help="Bank Nifty behaviour study (measurement only, search window)"

@@ -105,5 +105,24 @@ def minutes() -> None:
         store.close()
 
 
+def opens15() -> None:
+    """Groww daily candles have open = NULL from late Oct 2025 (and 2025-01-01). For stocks without 1-min data,
+    download 15-min candles from 2024-12-01 so each day's open can be rebuilt from its first bar
+    (and checked against the daily open where both exist)."""
+    names = [r["Symbol"] for r in csv.DictReader(LIST.open(encoding="utf-8"))]
+    store = MarketStore(ROOT / "data" / "market.duckdb")
+    try:
+        dl = downloader(store)
+        for s in names:
+            if not store.candles(f"NSE-{s}", "1minute", datetime(2025, 1, 1), datetime(2025, 1, 2)).empty:
+                continue                                  # has 1-min data already
+            n = dl.download_range("CASH", f"NSE-{s}", "15minute", date(2024, 12, 1), HIST_END)
+            log(f"  {s}: +{n} 15-minute candles")
+    except FetchAborted as e:
+        sys.exit(f"STOPPED: {e} — rerun to resume")
+    finally:
+        store.close()
+
+
 if __name__ == "__main__":
-    {"rank": rank, "minutes": minutes}[sys.argv[1]]()
+    {"rank": rank, "minutes": minutes, "opens15": opens15}[sys.argv[1]]()

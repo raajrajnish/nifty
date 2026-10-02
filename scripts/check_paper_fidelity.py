@@ -18,6 +18,7 @@ from tradingagent.data.store import MarketStore
 from tradingagent.paper.engine import PaperEngine
 from tradingagent.sim.costs import CostModel
 from tradingagent.sim.exit_study import HALF_SPREAD_PCT
+from tradingagent.sim.fidelity import next_expiry, option_contracts, option_expiries
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 12
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,14 +32,14 @@ sample = [days[i] for i in range(0, len(days), max(1, len(days) // N))][:N]
 store = MarketStore(ROOT / "data/market.duckdb", read_only=True)
 hist = store.candles("NSE-NIFTY", "1minute")
 vix = store.candles("NSE-INDIAVIX", "1day")
-expiries = sorted(r[0] for r in store.con.execute("SELECT DISTINCT expiry FROM contracts WHERE kind='CE'").fetchall())
+expiries = option_expiries(store.con, "NIFTY")  # NIFTY only: the table also holds Bank Nifty expiries
 costs = CostModel(load_config(ROOT / "config").costs)
 rows = []
 for d in sample:
-    exp = next(e for e in expiries if e > d)
+    exp = next_expiry(d, expiries)
+    assert exp is not None, d
     eng = PaperEngine(d, hist, vix, exp, costs)
-    syms = store.con.execute("SELECT symbol, strike, kind FROM contracts WHERE expiry=? AND kind IN ('CE','PE')",
-                             [exp]).fetchall()
+    syms = option_contracts(store.con, exp, "NIFTY")
     eng.symbols = {(int(k), side): s for s, k, side in syms}
     start, end = datetime.combine(d, time(9, 15)), datetime.combine(d, time(15, 30))
     events = []

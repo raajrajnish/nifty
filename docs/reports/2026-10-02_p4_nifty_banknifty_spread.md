@@ -37,3 +37,6 @@ Bank Nifty is about a third of Nifty. A large same-day divergence between the tw
 
 ## Multiple-testing count
 1 design rule (Phase 3 total: 7); 1 one-shot test at most.
+
+## Result (run 2026-10-02 14:12, `data/reports/backtests/phase3_p4_design_20261002_1412/`)
+n=50, net +₹1,140/trade (2× +₹1,048), random control −₹125, CI [−600, 3,361], P=0.13, without the best 5 days −₹823. Spread reversion +2.7 bp, CI [−11.4, 17.7]; Nifty catch-up +8.7 bp. **Design FAIL** (P > 0.05, reversion CI includes 0). The test window and Bank Nifty lock box 1 were NOT opened. P4 ends.

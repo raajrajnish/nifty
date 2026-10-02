@@ -29,3 +29,6 @@ An option buyer only profits when the realised move beats the move the premium a
 
 ## Multiple-testing count
 1 rule, no parameter grid. This is 1 of 7 design-stage tests in Phase 3 (P1: 1, P2: 4, P3: 1, P4: 1) and 1 of at most 4 one-shot tests.
+
+## Result (run 2026-10-02 14:12, `data/reports/backtests/phase3_p1_design_20261002_1412/`)
+Signal days n=98, net +₹27/trade, 2× costs −₹154, control (non-signal days) −₹702, CI [−747, 881], P(≤0)=0.49. **Design FAIL** (2× costs negative, P > 0.05). The test window was not opened. P1 ends.

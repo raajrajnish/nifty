@@ -31,3 +31,6 @@ If implied volatility rises during the morning while Nifty has barely moved, som
 
 ## Multiple-testing count
 1 design rule (Phase 3 total: 7); 1 one-shot test at most.
+
+## Result (run 2026-10-02 14:12, `data/reports/backtests/phase3_p3_design_20261002_1412/`)
+Design A (2021-10 → 2025-06): n=69, right after 60 min 55.1% (random 51.5%), 15:10 move +0.082 ATR, CI [−0.075, 0.263] → **PASS-A FAIL** (CI includes 0). Design B options n=32, +₹296, CI [−1,571, 3,230], P=0.45. The test window was not opened. P3 ends.

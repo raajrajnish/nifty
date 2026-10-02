@@ -38,3 +38,6 @@ NIFTY expiry days (dates taken from the contracts table, so holidays are already
 
 ## Multiple-testing count
 4 design candidates (Phase 3 total: 7 design tests); 1 one-shot test at most.
+
+## Result (run 2026-10-02 14:12, `data/reports/backtests/phase3_p2_design_20261002_1412/`)
+Straddles (n=82 each): 09:30 −₹413, 11:00 +₹188 (P=0.39), 13:30 −₹760. M2 afternoon breakout n=39, +₹406 (2× +₹345), control −₹442, CI [−541, 1,566], P=0.24. Selected M2 → **Design FAIL** (n < 40, P > 0.05). No rule; the test window was not opened. Pin: 23.6 pts from a 100-strike on expiry days vs 26.3 on other days (uniform 25), so no pin. Short straddle (RESEARCH ONLY, owner decision): 09:30 +₹154, 11:00 −₹432, 13:30 +₹539 per trade.

@@ -101,3 +101,45 @@ Option selling (for example the other side of P1/P2) stays **research-only and a
 - `04c3e80` Forward summary: compare G1/G2 with the corrected backtest evidence (`src/tradingagent/sim/forward.py`, `tests/unit/test_setups.py`)
 
 All 196 tests pass; ruff and mypy are clean.
+
+## 6. Phase 3 results (owner-approved 2026-10-02; run after the pre-declarations in commit `29b0ce8`)
+
+### For the owner (bottom line first)
+
+**None of the four new ideas passed. There is no new candidate to paper-trade.**
+
+- I tested four ideas that use information the earlier ~90 ideas never touched:
+  - the **price of options** themselves (are they cheap or dear?);
+  - **expiry-day** trading;
+  - the **VIX** moving while Nifty is flat;
+  - **Nifty vs Bank Nifty** moving apart.
+- Each was written down with its exact rules **before** I ran it, and each first had to pass on older data (Dec 2023 – Jun 2025).
+  - **All four failed at that first stage,** so the newer data (Jul 2025 – Sep 2026) stays unopened.
+  - **The Bank Nifty lock boxes were not opened.** Both are still available for future ideas.
+- Two came closest, but both are very likely luck:
+  - **Nifty vs Bank Nifty** made +₹1,140 a trade on 50 trades. But the result rests on a few big days (without the best 5 days: −₹823), and the "pull-back" it was built on barely happened (+2.7 basis points, could be zero).
+  - **Afternoon breakout on expiry day** made +₹406 on 39 trades. That is too few trades, and with a 24% chance of being luck.
+- **A research-only note (selling, which your system does not do):** **selling** the straddle at 13:30 on expiry day would have earned about +₹540 a trade. That is the classic "options are overpriced on expiry afternoons" effect. It carries unlimited risk, and selling is your decision, not something I recommend adding.
+- The fifth idea (where option writers are positioned) is written down and will be tested once, in about January 2027, when ~60 recorded days exist. **Keep the recorder running every day;** that recording is now the most valuable thing the project collects.
+
+**Recommendation:**
+- No new paper candidates.
+- Keep G1 and G2 on paper as you decided, and keep recording.
+- Stop searching historical Nifty / Bank Nifty data. Fresh recorded days (forward paper results and P5) are now the only clean evidence left.
+
+### Results per hypothesis (design window 2023-12-01 → 2025-06-30; 1 lot of 65; after Groww charges and half-spread)
+
+| Hypothesis | n | Net / trade | 2× costs | Control (same window) | 95% CI | P(mean ≤ 0) | Design | One-shot test |
+|---|---:|---:|---:|---|---|---:|---|---|
+| **P1** straddle at 09:30 when the opening range is large vs the straddle price | 98 | +₹27 | −₹154 | non-signal days −₹702 (all days −₹471) | [−747, 881] | 0.49 | **FAIL** (negative at 2× costs; P > 0.05) | not opened |
+| **P2** expiry day, selected rule **M2** (afternoon breakout, 0DTE) | 39 | +₹406 | +₹345 | straddle at the same minute −₹442 | [−541, 1,566] | 0.24 | **FAIL** (n < 40; P > 0.05) | not opened |
+| P2 other measurements (not selected): straddle 09:30 / 11:00 / 13:30 | 82 each | −₹413 / +₹188 / −₹760 | −543 / +65 / −871 | — | — | 0.69 / 0.39 / 0.96 | — | — |
+| **P3** VIX ≥ +3% while Nifty is flat → buy put | index 69; options 32 | options +₹296 | +₹207 | random entry −₹125 | options [−1,571, 3,230] | 0.45 | **FAIL** (PASS-A, 2021-10 → 2025-06: right after 60 min 55.1% vs random 51.5%, which is OK; but the 15:10 move +0.082 ATR has CI [−0.075, 0.263], which includes 0; options P = 0.45) | not opened |
+| **P4** Nifty catches up after a Bank Nifty divergence (\|z\| ≥ 2) | 50 | +₹1,140 | +₹1,048 | random entry −₹125 | [−600, 3,361] | 0.13 | **FAIL** (P > 0.05; spread reversion +2.7 bp, CI [−11.4, 17.7] includes 0; without the best 5 days −₹823) | not opened (the lock box stays sealed) |
+| **P5** option-chain positioning | — | — | — | — | — | — | declared only | test once around Jan 2027 (60 recorded days) |
+
+**Other measurements and notes:**
+- **Pin (P2 M3):** the 15:10 index is on average 23.6 pts from a 100-strike on expiry days, against 26.3 on other days (uniform = 25). That is no meaningful pinning.
+- **Selling, research only** (owner decision, never live): expiry-day short straddle net per trade was +₹154 (09:30), −₹432 (11:00) and **+₹539 (13:30)**.
+- **Multiple testing:** 7 design-stage tests, 0 passes, 0 one-shot tests used. By chance alone, about 0.35 passes at P ≤ 0.05 would be expected.
+- **Outputs:** `data/reports/backtests/phase3_p{1,2,3,4}_design_20261002_1412/`. Code: `src/tradingagent/sim/phase3.py` (unit-tested), `scripts/run_phase3.py`.

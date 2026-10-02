@@ -60,6 +60,16 @@ def test_forward_rules_track_the_playbook_setups():
     assert all(r.open_outside_only for r in forward.FORWARD_RULES_V2) and S["common"]["require_open_outside_prev_range"]
 
 
+def test_forward_benchmarks_match_setups_evidence():
+    """The forward summary compares live results with these numbers; they must be the CORRECTED evidence
+    (G2 was 133 trades / +862 before the warm-up fix, now 114 / +300)."""
+    by_setup = {r.setup: r for r in forward.FORWARD_RULES_V2}
+    for g, s in (("G1", "S1"), ("G2", "S2")):
+        ev, r = S["setups"][g]["evidence"], by_setup[s]
+        got = (r.backtest_n, r.backtest_net_inr, r.backtest_ex_top5_inr)
+        assert got == (ev["trades"], ev["net_per_trade_inr"], ev["ex_top5_inr"]), g
+
+
 def test_playbook_mentions_every_setup_and_parameter():
     pb = (REPO / "playbook" / "03_setups.md").read_text(encoding="utf-8")
     for needle in ("G1", "G2", "−50%", "−30%", "15:10", "13:30", "TWAP × 1.0005", "previous 20 trading days",

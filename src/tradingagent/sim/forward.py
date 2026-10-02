@@ -47,9 +47,11 @@ class FrozenRuleV2:
     backtest_ex_top5_inr: float
 
 
+# Backtest benchmarks = config/setups.yaml `evidence` (re-run 2026-10-02 after the G2 warm-up fix; the
+# original 133 trades / +862 for G2 came from that bug). Rules unchanged — only the comparison numbers.
 FORWARD_RULES_V2 = (
-    FrozenRuleV2("G1_S1_open_outside", "S1", True, 117, 836.7, 140.7),
-    FrozenRuleV2("G2_S2_open_outside", "S2", True, 133, 862.0, 198.6),
+    FrozenRuleV2("G1_S1_open_outside", "S1", True, 117, 833.1, 137.0),
+    FrozenRuleV2("G2_S2_open_outside", "S2", True, 114, 300.4, -211.7),
 )
 
 

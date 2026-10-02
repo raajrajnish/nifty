@@ -27,6 +27,89 @@
 - ₹ at **lot 30** for comparability (the real lot size changed during the period). Results are also reported in R (multiples of the amount risked).
 - Day features (volatility, opening-range width, trend) use only past data, with **unknown values never counted as "calm" or "narrow"** (the warm-up fix from 2026-10-02). Bank Nifty history starts Oct 2021, so all medians are fully formed by Dec 2023.
 
+## Change of direction (owner, 2026-10-02): find Bank Nifty's OWN setups
+
+Step 1 (below) only re-tested the Nifty entry catalogue on Bank Nifty. The owner asked for setups **derived from Bank Nifty's own behaviour.** New order:
+1. **Step B1: behaviour study.** Measurement only, no trading rules, search window only.
+2. **Step B2:** turn the strongest *measured* behaviours into ≤5 Bank Nifty hypotheses, pre-declared, including exits designed for **monthly** options.
+3. **Step B3:** test them in the search window.
+4. **Step B4:** open the lock boxes once for the ≤3 best.
+
+### Step B1: what is measured (declared before running), Bank Nifty Dec 2023 – Sep 2025
+1. **Time of day:**
+   - when the day's high and low are made (30-min slots);
+   - average absolute move per slot (ATR units);
+   - does a slot's direction carry on into the next slot, or reverse? (trend vs mean-reversion by time of day)
+2. **Opening behaviour:**
+   - does the first-hour direction (09:15 → 10:15) persist to 15:10, split by size of first-hour move (terciles)?
+   - gap size buckets: how often the gap fills by 15:10, and how often it continues.
+3. **Day types:**
+   - how often trend days happen (|close − open| ≥ 0.6 × day range);
+   - what known-before-10:15 conditions make them more likely: prior-day narrow range (NR7), open outside yesterday's range, gap size, VIX level, first-hour range.
+4. **Bank Nifty vs Nifty (relative strength):** at 10:15, Bank Nifty's move minus Nifty's move since yesterday's close. Does the sign predict Bank Nifty's move to 15:10?
+5. **Monthly options economics:**
+   - for ATM monthly options bought intraday, how the premium responds to the index move (effective delta) and how much it decays per hour;
+   - **the index move (in points and ATR units) needed just to break even after costs**, weekly vs monthly.
+   - This sets the minimum move any Bank Nifty setup must target.
+
+**Each measurement reports a 95% CI where relevant, plus the same statistic for random times/days.** Only effects with a CI clear of the random baseline become hypotheses in step B2. Not measured yet (data not held): heavyweight-stock lead (HDFC Bank, ICICI Bank), and RBI-policy and bank-results days. Those can be added after the stock data is downloaded.
+
+### Step B1 result (2026-10-02, search window, 455 days)
+1. **Time of day:** U-shaped.
+   - The day's high/low is made in the first 30 min on ~29% of days and in the last 30 min on ~16%; midday is quiet (~0.10 ATR per 30 min).
+   - **No 30-min momentum anywhere.** The next slot goes the same way 41–53% of the time.
+   - Slight reversal tendencies at 09:15–09:30 (46.6%) and 14:00–15:30 (41–45%). Tiny (≤0.02 ATR); the only significant one is after 15:00.
+2. **Opening:**
+   - The first-hour direction does **not** persist (+0.004 ATR [−0.048, 0.059]), whatever its size.
+   - Gaps < 0.2% fill 90% of the time, 0.2–0.5% fill 71%, 0.5–1% fill 46%, > 1% fill 9%. (No baseline yet; see the B1 addendum.)
+3. **Trend days:** 32.5% of days. Nothing known by 10:15 changes this significantly. A wide first hour (> 0.6 ATR) gives 39.4% [32.4, 46.3] vs 32.5% overall: overlapping, a weak lead.
+4. **Relative strength vs Nifty at 10:15:** trading in its direction gives +0.044 ATR [−0.041, 0.133]. Not significant.
+5. **Monthly options economics (key):**
+   - ATM monthly bought at 10:00 and sold at 15:10 loses only ~11 premium pts to decay (premium ₹609, delta 0.46).
+   - **Break-even index move ≈ 30 pts**, against a median |move| of 166 pts.
+   - **Monthly options are cheap to hold intraday.** Step 1's monthly losses therefore came from **direction**, not decay: ORB-15/30 lost ≈ 35 premium pts per trade ≈ 75 index pts *against* the breakout.
+
+**Reading:** Bank Nifty in this window looks **mean-reverting, not trending**, at the intraday scale. The evidence: no momentum, the first hour doesn't persist, and breakouts fail.
+
+### Step B1 addendum (declared before running): two direct measurements
+- **(a) Breakout follow-through:** after the first 5-min close beyond the 15-min and 30-min opening range (09:30/09:45 – 13:30), the index move in the breakout direction at +60 min and at 15:10 (ATR units, 95% CI). Random times as the baseline.
+- **(b) Gap fill vs a fair baseline:** for each gap bucket, how often the index touches yesterday's close by 15:10, versus how often it touches the level the same distance on the *other* side of the open (continuation). Fill ≫ continuation means a real pull back towards yesterday's close.
+
+**Addendum results:**
+- **(a) Breakouts are a coin flip, not a reversal.** ORB-15: 47.9% right at +60 min, 15:10 move −0.006 ATR [−0.068, 0.057]. ORB-30: 50.0%, −0.012. Random: 47.9%, +0.038.
+- **(b) Real pull back to yesterday's close for medium gaps:**
+
+  | Gap | Fill | Same-distance continuation |
+  |---|---:|---:|
+  | 0.2–0.5% (n = 125) | **71%** | 55% |
+  | 0.5–1% (n = 59) | **44%** | 27% |
+  | < 0.2% | 91% | 89% (no difference) |
+  | > 1% | 10% | 14% (no difference) |
+
+- **Open question:** with zero index edge, ORB monthly-option trades lost ≈ 35 premium pts per trade. The 10:00 decay measurement predicts only ≈ 14 (decay + costs).
+
+### Step B1 addendum 2 (declared before running): does the time of buying matter?
+- **(c)** ATM monthly-period options bought at **09:20, 09:35, 10:00, 11:00, 12:00 and 13:00**, sold at 15:10, every non-expiry day.
+- For each entry time: effective delta, the decay intercept (premium pts lost with zero index move), and the break-even index move.
+- Same for the weekly period, for comparison.
+- Hypothesis being measured: options bought in the first 30–45 minutes carry a premium that deflates during the day.
+
+**Addendum 2 result: buying time barely matters for monthly options.**
+
+| Buy at | 09:20 | 09:35 | 10:00 | 11:00 | 12:00 | 13:00 |
+|---|---:|---:|---:|---:|---:|---:|
+| Decay to 15:10 (pts, premium ≈ ₹610) | −11.8 | −11.4 | −10.8 | −8.8 | −6.1 | −4.9 |
+| Break-even index move (pts) | 32 | 31 | 30 | 25 | 20 | 17 |
+
+- Delta is ≈ 0.47 at every time. **Early-morning options are not overpriced**, so the hypothesis is rejected.
+- The ORB monthly loss is therefore ordinary direction noise in that sub-period (index edge ≈ 0; the standard error is about ±7 premium pts per trade), not a structural effect.
+
+### Step B1 conclusions (what Bank Nifty's own behaviour offers)
+1. **Requirement for any Bank Nifty monthly setup:** a directional edge of **> ~30 index pts (≈ 0.05 ATR) by 15:10.** Below that, decay plus costs eat it. Holding all day is cheap (≈ 2% of premium).
+2. **The one measured Bank Nifty-specific effect:** a pull back to yesterday's close after **medium gaps (0.2–1.0%)**. Fill 71% vs 55% continuation (0.2–0.5%), and 44% vs 27% (0.5–1%).
+3. **Not present:** intraday momentum, first-hour persistence, breakout follow-through, relative-strength edge, or predictable trend days.
+4. **Not yet measurable:** heavyweight-stock lead (HDFC Bank and ICICI Bank are ≈ 50% of the index), and RBI-policy and bank-results days. These need the stock data and event dates.
+
 ## Step 1: entry study (this document; the same design as Nifty study #2)
 - **Entries (7):** ORB-15, ORB-30, TWAP pullback, EMA 9/21 cross, gap-and-go, gap-fade, random control. Definitions are identical to `sim/entry_study.py`; one per day.
 - **Exits (2, fixed):**

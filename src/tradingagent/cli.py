@@ -576,6 +576,38 @@ def cmd_backtest_magnitude(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bn_behaviour(_: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from tradingagent.data.store import MarketStore
+    from tradingagent.sim import bn_behaviour as bb
+    from tradingagent.sim.costs import CostModel
+
+    store = MarketStore(DB_PATH, read_only=True)
+    try:
+        r = bb.run(store, CostModel(load_config(ROOT / "config").costs))
+    finally:
+        store.close()
+    with pd.option_context("display.width", 220, "display.max_columns", 20, "display.max_colwidth", 60):
+        print(f"=== Bank Nifty behaviour, search window only ({r['days']} days) ===")
+        tod = r["tod"]
+        print("\n1a. When the day's HIGH / LOW is made (30-min slot):")
+        print(pd.concat([tod["high_slot"], tod["low_slot"], tod["abs_move"]], axis=1).to_string())
+        print("\n1b. Does a 30-min move carry on into the next 30 min? (random = 50%, 0)")
+        print(tod["persistence"].to_string(index=False))
+        print("\n2a. First hour (09:15→10:15) → rest of day (10:15→15:10), ATR units, 95% CI:")
+        print(r["opening"]["first_hour"].to_string(index=False))
+        print("\n2b. Gaps: filled by close / continued to 15:10:")
+        print(r["opening"]["gaps"].to_string())
+        print("\n3. Trend days (|close−open| ≥ 0.6 × range) by condition known by 10:15:")
+        print(r["day_types"].to_string(index=False))
+        print("\n4. Bank Nifty vs Nifty relative strength at 10:15 → Bank Nifty move to 15:10:")
+        print(r["relative"].to_string(index=False))
+        print("\n5. ATM option bought 10:00, sold 15:10 — what index move is needed to break even:")
+        print(r["options"].to_string(index=False))
+    return 0
+
+
 def cmd_bn_search(args: argparse.Namespace) -> int:
     from datetime import datetime
 
@@ -886,6 +918,8 @@ def main(argv: list[str] | None = None) -> int:
     pop.add_argument("--start", default="", help="stage B window start YYYY-MM-DD (default 2023-12-01)")
     pop.add_argument("--end", default="", help="stage B window end YYYY-MM-DD (default 2026-09-30)")
     pop.set_defaults(fn=cmd_backtest_popular)
+    sub.add_parser("bn-behaviour", help="Bank Nifty behaviour study (measurement only, search window)"
+                   ).set_defaults(fn=cmd_bn_behaviour)
     bns = sub.add_parser("bn-search", help="Bank Nifty setup search (search window only; lock boxes refused)")
     bns.add_argument("--step", choices=["entries"], default="entries")
     bns.set_defaults(fn=cmd_bn_search)

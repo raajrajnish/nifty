@@ -149,7 +149,10 @@ def day_features(idx: pd.DataFrame) -> pd.DataFrame:
     daily["gap_pct"] = (daily["open"] - daily["prev_close"]) / daily["prev_close"]
     rng = (daily["high"] - daily["low"]) / daily["close"]
     daily["atr14_pct"] = rng.shift(1).rolling(14).mean()                      # up to yesterday
-    daily["high_vol"] = daily["atr14_pct"] > daily["atr14_pct"].shift(1).rolling(120, min_periods=40).median()
+    # Written as NOT(atr ≤ median): if either value is unknown (too little history) the day counts as
+    # volatile, so G2 ("calm days only") does not trade. Plain `atr > median` made unknown days "calm"
+    # (warm-up bug found 2026-10-02, see docs/HYPERCARE_LOG.md). Identical whenever both values exist.
+    daily["high_vol"] = ~(daily["atr14_pct"] <= daily["atr14_pct"].shift(1).rolling(120, min_periods=40).median())
     or_w = idx[idx["ts"].dt.time < time(9, 30)].groupby("day").apply(
         lambda g: (g["high"].max() - g["low"].min()) / g["close"].iloc[-1], include_groups=False)
     daily["or15_pct"] = or_w

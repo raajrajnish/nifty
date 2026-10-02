@@ -85,3 +85,21 @@ def test_summary_pass_requires_all_conditions():
     bad = good.assign(net2_inr=good["net_inr"] - 2000)  # dies at 2× costs
     assert bool(summarize(bad)[lambda x: x["filter"] == "all"]["PASS"].iloc[0]) is False
     assert set(FILTERS) >= {"all", "high_vol", "gap_day", "before_11"}
+
+
+def test_unknown_volatility_is_not_calm():
+    """Warm-up bug guard: with too little history the 120-day median is unknown → day counts as volatile."""
+    rows = []
+    for i in range(60):  # 60 days: ATR14 exists from ~day 15, the 120-day median (min 40) only from ~day 56
+        d = date(2024, 1, 1) + timedelta(days=i)
+        rows += [{"ts": datetime(d.year, d.month, d.day, 9, 15) + timedelta(minutes=k), "open": 100.0,
+                  "high": 101.0 + (i % 3), "low": 99.0, "close": 100.0} for k in range(20)]
+    idx = pd.DataFrame(rows)
+    idx["day"] = idx["ts"].dt.date
+    f = day_features(idx)
+    unknown = f["atr14_pct"].shift(1).rolling(120, min_periods=40).median().isna()
+    assert unknown.iloc[:40].all()
+    assert (f.loc[unknown, "high_vol"] == True).all()  # noqa: E712  — never "calm" when unknown
+    known = ~unknown & f["atr14_pct"].notna()
+    med = f["atr14_pct"].shift(1).rolling(120, min_periods=40).median()
+    assert (f.loc[known, "high_vol"] == (f.loc[known, "atr14_pct"] > med[known])).all()  # unchanged when known

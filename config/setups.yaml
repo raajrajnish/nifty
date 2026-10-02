@@ -36,7 +36,7 @@ setups:
     stop_premium_pct: 50
     invalidation: five_min_close_beyond_opposite_or_side
     max_trades_per_day: 1
-    evidence: {trades: 117, net_per_trade_inr: 836.7, ex_top5_inr: 140.7, ci95_inr: [46, 1733]}
+    evidence: {trades: 117, net_per_trade_inr: 833.1, ex_top5_inr: 137.0, ci95_inr: [40, 1733]}
   G2:
     name: TWAP trend pullback on calm open-outside day
     day_filter:
@@ -54,4 +54,4 @@ setups:
     stop_premium_pct: 30
     invalidation: none
     max_trades_per_day: 1
-    evidence: {trades: 133, net_per_trade_inr: 862.0, ex_top5_inr: 198.6, ci95_inr: [88, 1715]}
+    evidence: {trades: 114, net_per_trade_inr: 300.4, ex_top5_inr: -211.7, ci95_inr: [-374, 1001]}  # corrected 2026-10-02

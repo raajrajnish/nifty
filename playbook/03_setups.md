@@ -38,12 +38,13 @@
 | **Profit handling** | **Hold to 15:10.** No profit lock, no trailing stop, no early cut. |
 | **Mechanical pre-screen** (agent cadence) | At 09:30, the day passes conditions 1–3. After that, from 09:35, check each 5-minute close against the OR edges. |
 
-**Backtest evidence (Dec 2023 – Sep 2026, 1 lot, after Groww charges and half-spread):**
-- 117 trades; win rate 45%; **+₹837 per trade**; 95% CI [₹46, ₹1,733]
-- without the 5 best days: +₹141 per trade
-- average loss −₹2,072; worst trade −₹4,962
-- calls −₹4 per trade, puts +₹1,486 per trade
-- alone: typical drawdown about ₹22k; bad case (p95) about ₹36k
+**Backtest evidence (Dec 2023 – Sep 2026, 1 lot, after Groww charges and half-spread; re-run 2026-10-02 on full index history):**
+- 117 trades; win rate 45%; **+₹833 per trade**; 95% CI [₹40, ₹1,733]
+- without the 5 best days: +₹137 per trade
+- average loss −₹2,079; worst trade −₹4,962
+- calls +₹33 per trade, puts +₹1,430 per trade
+- alone: typical drawdown about ₹23k; bad case (p95) about ₹36k
+- ⚠️ **Out-of-sample:** direction failed on untouched Nifty 2021–23 and on Bank Nifty (see `docs/HYPERCARE_LOG.md`).
 
 ---
 
@@ -62,12 +63,13 @@
 | **Profit handling** | **Hold to 15:10.** No profit lock, no trailing stop, no early cut. |
 | **Mechanical pre-screen** | Before the open: day conditions 1 and 3. At 09:15: condition 2. From 10:00, check each 5-minute bar against TWAP and the 30-minute TWAP slope. |
 
-**Backtest evidence:**
-- 133 trades; win rate 45%; **+₹862 per trade**; 95% CI [₹88, ₹1,715]
-- without the 5 best days: +₹199 per trade
-- average loss −₹2,147; worst trade −₹4,520
-- calls +₹156 per trade, puts +₹1,775 per trade
-- alone: typical drawdown about ₹23k; bad case (p95) about ₹38k
+**Backtest evidence (CORRECTED 2026-10-02):** the original figures (133 trades, +₹862 per trade) came from a warm-up bug. With too little index history, the 120-day median was unknown and those days were counted as calm. The rule above was always correct; the code now follows it (an unknown median means "not calm").
+- 114 trades; win rate 43%; **+₹300 per trade**; 95% CI [−₹374, ₹1,001] (**could be zero**)
+- without the 5 best days: **−₹212 per trade**, so the edge rests on a few big days
+- average loss −₹2,158; worst trade −₹4,520
+- calls +₹150 per trade, puts +₹531 per trade
+- alone: typical drawdown about ₹28k; bad case (p95) about ₹44k
+- Out-of-sample (untouched Nifty 2021–23): direction borderline, CI [−0.002, 0.191] ATR. Bank Nifty: no edge.
 
 ---
 
@@ -88,13 +90,13 @@ Each trading day the dashboard shows each setup's checks, signals and paper P&L,
 
 1. **Execution mismatch:** the live paper engine did something the written rules would not do (a wrong day check, signal, contract or exit). Treated as a **bug**; fix the code and re-run the fidelity check.
 2. **Fills:** the average entry/exit slippage versus the recorded mid is more than **2× the assumed half-spread (0.11%)**. Re-cost the backtest with the measured value.
-3. **Results after 20 paper trades per setup:** net per trade below **₹0**, or a profit factor below 1.0, means a review. The backtest's 95% range was G1 ₹46–1,733 and G2 ₹88–1,715 per trade.
-4. **Drawdown** beyond the backtest's bad case (p95: G1 ≈ 18%, G2 ≈ 19%, both ≈ 29% of ₹2 lakh) means pause and review.
+3. **Results after 20 paper trades per setup:** net per trade below **₹0**, or a profit factor below 1.0, means a review. The backtest's 95% range was G1 ₹40–1,733 and G2 −₹374 to ₹1,001 per trade (corrected 2026-10-02).
+4. **Drawdown** beyond the backtest's bad case (p95: G1 ≈ 18%, G2 ≈ 22%, both ≈ 31% of ₹2 lakh; corrected 2026-10-02) means pause and review.
 5. **Learnings:** any repeated pattern in losing trades (for example call-side losses or expiry-week behaviour) is written down as a **hypothesis** for a pre-declared study. It is never added directly to the rules.
 
 ## Running G1 and G2 together
 
-- **Both may be open at the same time.** They were tested independently, and "max one trade per day" was **worse**. Combined (1 lot each): 250 trades, about ₹75k per year in the backtest; typical drawdown about ₹36k, bad case (p95) about ₹57k; worst day −₹7,064; up to 12 losing days in a row is normal.
+- **Both may be open at the same time.** They were tested independently, and "max one trade per day" was **worse**. Combined (1 lot each, corrected 2026-10-02): 231 trades, about ₹46k per year in the backtest (was ₹75k before the G2 correction); typical drawdown about ₹38k, bad case (p95) about ₹61k.
 - **Daily loss caps of ₹3k–₹8k had no effect;** the stops are the real limit.
 
 ## ⚠ Conflicts with current `config/risk.yaml` (owner decisions needed before any live stage)
@@ -103,7 +105,7 @@ Each trading day the dashboard shows each setup's checks, signals and paper P&L,
 |---|---|---|---|
 | `per_trade_risk_pct: 1.0` (₹2,000) | ₹2,000 | G1 ≈ ₹4,500 (50% of a ~₹140 premium × 65); G2 ≈ ₹2,700 | Guardrail G10 sizing gives **0 lots**, so the trades are rejected |
 | `max_open_positions: 1` | 1 | 2 (G1 and G2 together) | The second setup is blocked |
-| `kill_criteria.live_drawdown_pct_from_peak: 10` | ₹20k | Normal bad patch is ₹22k–₹57k | Kill fires during normal noise |
+| `kill_criteria.live_drawdown_pct_from_peak: 10` | ₹20k | Normal bad patch is ₹23k–₹61k | Kill fires during normal noise |
 
 **The forward paper test is not affected** (it evaluates the setups, not the guardrails). These must be decided before S1 paper trading through the guardrails or any live stage.
 

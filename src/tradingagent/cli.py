@@ -483,9 +483,32 @@ def cmd_paper(args: argparse.Namespace) -> int:
                 print("  " + line)
         print(f"\nClosed trades: {len(eng.closed)}  → {out}")
         return 0
+    load_dotenv(ROOT / ".env")              # live only: ANTHROPIC_API_KEY for the LLM shadow filter (never printed)
     run_live(day, data_root, DB_PATH, costs, RUNTIME_DIR / "paper_state.json", ledger,
              now=lambda: clock.now().replace(tzinfo=None), equity=start_equity)
     return 0
+
+
+def cmd_llm_shadow_check(_: argparse.Namespace) -> int:
+    """One real 'risk of the day' call to check the API key, web search and budget plumbing (costs ~₹1–3).
+    Recorded with kind='check' so it never counts in the forward evaluation."""
+    from datetime import datetime as _dt
+
+    from tradingagent.agent.shadow import Ledger, ShadowConfig, decide, load_events, morning_prompt
+
+    load_dotenv(ROOT / ".env")
+    cfg, ledger = ShadowConfig.load(), Ledger()
+    today = _dt.now().date()
+    print(f"model {cfg.model}; spent this month ₹{ledger.month_spend_inr(today):.2f} of ₹{cfg.monthly_cap_inr:.0f}")
+    rec = decide("check", today, None, morning_prompt(today, load_events(today)), cfg, ledger, _dt.now)
+    print(f"decision: {rec.get('decision')}  confidence: {rec.get('confidence')}  cost ₹{rec.get('cost_inr')}  "
+          f"latency {rec.get('latency_s')}s  searches {(rec.get('usage') or {}).get('web_search_requests')}")
+    for r in rec.get("reasons") or []:
+        print("  -", r)
+    print("sources:", [s["url"] for s in (rec.get("sources") or [])][:5])
+    if rec.get("error"):
+        print("error:", rec["error"])
+    return 0 if rec.get("decision") not in (None, "NO_DECISION") else 1
 
 
 def cmd_backtest_discovery(args: argparse.Namespace) -> int:
@@ -1070,6 +1093,8 @@ def main(argv: list[str] | None = None) -> int:
     pop.add_argument("--start", default="", help="stage B window start YYYY-MM-DD (default 2023-12-01)")
     pop.add_argument("--end", default="", help="stage B window end YYYY-MM-DD (default 2026-09-30)")
     pop.set_defaults(fn=cmd_backtest_popular)
+    sub.add_parser("llm-shadow-check", help="one real LLM shadow call to verify key/web search (~Rs 1-3)"
+                   ).set_defaults(fn=cmd_llm_shadow_check)
     sub.add_parser("backtest-swing", help="swing study on the Nifty 50 basket (daily bars, long only)"
                    ).set_defaults(fn=cmd_backtest_swing)
     sub.add_parser("backtest-stocks", help="stock intraday pilot (frozen 10 stocks, two untouched periods)"

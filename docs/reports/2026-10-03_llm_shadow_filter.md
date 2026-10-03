@@ -59,3 +59,20 @@ The prompt text is versioned (`prompt_version`). **Changing the prompt starts a 
 2. The monthly budget cap.
 3. An Anthropic API key (entered in the morning window, never in chat).
 4. Who maintains `config/event_calendar.yaml` (a starter list for Oct–Dec 2026 can be prepared, but dates must be verified from official sources).
+
+## Owner decisions (2026-10-03) and implementation
+- **Decisions:**
+  - model **Claude Sonnet 5.5** only;
+  - cap **₹500/month** (and ≤ 12 calls/day);
+  - event calendar drafted by Claude, **verified by the owner**.
+- **Code:** `src/tradingagent/agent/shadow.py`. Wired into `paper/runner.run_live` only, **never into replay** (a replay would read today's news about a past day).
+  - Calls run in background threads.
+  - Every failure (no key, cap reached, API error, refusal, bad JSON) is recorded as `NO_DECISION`. The paper engine is never affected.
+  - Config: `config/llm_shadow.yaml`. Calendar: `config/event_calendar.yaml` (FOMC and US CPI verified from federalreserve.gov and bls.gov on 2026-10-03; **RBI MPC dates still to be added by the owner**).
+- **API:**
+  - Messages API with the `web_search_20260209` server tool (≤ 4 searches per call, located in India);
+  - JSON-schema structured output; `pause_turn` continuation;
+  - server-side refusal fallback (`fallbacks: "default"`).
+  - Sources recorded are the URLs the search actually returned, not the model's claims.
+- **Key setup:** `scripts/set_anthropic_key.ps1` (hidden input, saved to `.env`, never printed). `tradingagent llm-shadow-check` makes one real call (kind=`check`, which never counts in the evaluation).
+- **Evaluation:** the pre-declared test above is run on `data/paper/llm_shadow.jsonl` joined with `data/paper/live_trades.csv` at 30 signals or on 2027-02-28. Only `kind=signal` records with `decided_at` < the trade's exit time count.

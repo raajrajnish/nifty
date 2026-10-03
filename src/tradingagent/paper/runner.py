@@ -126,6 +126,21 @@ class Tail:
         return out
 
 
+def _shadow_runner(now: Callable[[], datetime], log: Callable[[str], None]) -> Any:
+    """LLM shadow filter for live sessions (config/llm_shadow.yaml). Never used in replay: a replay would read
+    today's news about a past day (look-ahead). Returns None if disabled or not importable."""
+    try:
+        from tradingagent.agent.shadow import Ledger, ShadowConfig, ShadowRunner
+        cfg = ShadowConfig.load()
+        if not cfg.enabled:
+            return None
+        log(f"LLM shadow filter ON ({cfg.model}, cap ₹{cfg.monthly_cap_inr:.0f}/month) — records only.")
+        return ShadowRunner(cfg, Ledger(), now, log=log)
+    except Exception as e:
+        log(f"LLM shadow filter unavailable (ignored): {e}")
+        return None
+
+
 def run_live(day: date, data_root: Path, db_path: Path, costs: CostModel, state_path: Path, ledger: Path,
              now: Callable[[], datetime], log: Callable[[str], None] = print, poll_s: float = 2.0,
              stop_at: time = time(15, 31), equity: float = 200000.0) -> PaperEngine | None:
@@ -139,9 +154,15 @@ def run_live(day: date, data_root: Path, db_path: Path, costs: CostModel, state_
     engine = make_engine(day, day_dir, db_path, costs, equity)
     tail = Tail(day_dir)
     log(f"Paper engine running for {day} (expiry {engine.expiry}). PAPER ONLY — no orders.")
+    shadow = _shadow_runner(now, log)                 # LLM take/skip SHADOW filter (records only; live sessions only)
     while True:
         for ts, stream, r in tail.read():
             feed(engine, ts, stream, r)
+        if shadow is not None:
+            try:
+                shadow.tick(engine)
+            except Exception as e:  # the shadow filter must never stop paper trading
+                log(f"LLM shadow error (ignored): {e}")
         write_state(engine, state_path, {"engine_heartbeat": now().isoformat(timespec="seconds")})
         append_ledger(ledger, engine.closed)
         if now().time() >= stop_at:

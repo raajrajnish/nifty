@@ -1,0 +1,17 @@
+# Scheduled events the LLM shadow filter is told about (±3 days around each trading day).
+# verified: true  = date taken from the official source on the date shown in `checked`.
+# verified: false = draft, NOT yet checked — the model is told it is unverified.
+# Times: US events land AFTER the Indian close (FOMC ≈ 23:30 IST, US CPI 18:00 IST) → they affect the NEXT session.
+#
+# TO ADD (owner): RBI Monetary Policy Committee 2026-27 meeting dates — rbi.org.in did not show the schedule on
+# 2026-10-03. Add each decision day as: {date: YYYY-MM-DD, event: "RBI MPC policy decision (10:00 IST)", verified: true}
+# Also worth adding when known: Union Budget (usually 1 Feb), state/general election results, major heavyweight
+# results (HDFC Bank, Reliance, ICICI Bank, Infosys, TCS) — from NSE corporate announcements.
+events:
+  # US Federal Reserve FOMC (decision on the 2nd day, ~23:30 IST) — federalreserve.gov/monetarypolicy/fomccalendars.htm
+  - {date: 2026-10-28, event: "US FOMC decision (~23:30 IST); Indian reaction next session", verified: true, checked: 2026-10-03}
+  - {date: 2026-12-09, event: "US FOMC decision (~23:30 IST); Indian reaction next session", verified: true, checked: 2026-10-03}
+  # US CPI release, 08:30 ET = 18:00 IST — bls.gov/schedule/news_release/cpi.htm
+  - {date: 2026-10-14, event: "US CPI release (18:00 IST); Indian reaction next session", verified: true, checked: 2026-10-03}
+  - {date: 2026-11-10, event: "US CPI release (18:00 IST); Indian reaction next session", verified: true, checked: 2026-10-03}
+  - {date: 2026-12-10, event: "US CPI release (18:00 IST); Indian reaction next session", verified: true, checked: 2026-10-03}

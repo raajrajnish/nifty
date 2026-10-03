@@ -35,3 +35,18 @@ Results per strategy, then one **combined list** (everything tested so far plus 
 - futures basis / roll;
 - option open interest (P5 is recording it);
 - FII/DII flow effects.
+
+## Result (run 2026-10-03 23:17, `round2_20261003_2317`; code committed before the run): NONE ROBUST
+
+| Strategy | H-A (Jan 2024 – Jun 2025) | H-B (Jul 2025 – Sep 2026) | Verdict |
+|---|---|---|---|
+| **R1** overnight, buy CE 15:20 → 09:20 | n = 291, **−₹103**/trade (PE −₹273). The index did rise overnight (+24.6 pts avg) but the option lost: spread and an overnight day of decay | n = 241, **−₹1,028**/trade (CI < 0); index −1.0 pt overnight | ❌ The effect exists in the index in H-A, but options can't capture it |
+| **R2** turn of the month, Nifty 50 basket | 17 windows, −0.03% (control −0.17%) | 13 windows, +0.07%, fails at 2× costs (control −0.47%) | ❌ Beats other weeks slightly, but doesn't pay for delivery costs |
+| **R4** Nifty intraday momentum 14:40 → 15:10 | n = 150, **−₹387**/trade (CI < 0; random −₹217) | n = 139, −₹81 (random −₹152) | ❌ |
+| **R5** weekly reversal, 5 worst losers | 77 weeks, +0.07%/week vs basket +0.38% | 63 weeks, −0.20% vs +0.00% | ❌ Worse than simply holding all 50 |
+| **R6** sell expiry straddle 13:30, 1.5× stop (**research only**) | n = 78, **+₹343**/trade, PF 1.35, 23 stops: **PASS** | n = 65, +₹31, **−₹93 at 2× costs**: FAIL | ⚠️ **Lead only** (one half). Worst trade −₹5,671; worst 5-trade run −₹10,538 |
+
+**Reading:**
+1. Nothing is robust.
+2. **R6, option selling (the volatility risk premium), is the only idea with a sound economic reason AND a positive result,** but the edge shrank in H-B and doesn't survive doubled costs. Selling is outside the buy-only system and is an owner decision.
+3. **R1 shows a useful general lesson:** an effect can be real in the index (overnight drift, H-A) and still impossible to capture by buying options, because spreads and decay eat it.

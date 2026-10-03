@@ -124,5 +124,29 @@ def opens15() -> None:
         store.close()
 
 
+def update() -> None:
+    """Daily (End of Day): forward data for the tournament — daily bars for all 50, 1-min for the frozen 10
+    (incl. HDFCBANK, ICICIBANK, BSE), 15-min for the other 40 (needed to rebuild Groww's broken daily opens)."""
+    now = datetime.now()
+    after_close = now.time() >= datetime.strptime("15:40", "%H:%M").time()
+    last = now.date() if after_close else (now - pd.Timedelta(days=1).to_pytimedelta()).date()
+    start = date(2026, 10, 1)
+    names = [r["Symbol"] for r in csv.DictReader(LIST.open(encoding="utf-8"))]
+    frozen = {r["symbol"] for r in csv.DictReader(FROZEN.open(encoding="utf-8"))}
+    store = MarketStore(ROOT / "data" / "market.duckdb")
+    try:
+        dl = downloader(store)
+        dl.last_day = last
+        for s in names:
+            dl.download_range("CASH", f"NSE-{s}", "1day", start, last)
+            dl.download_range("CASH", f"NSE-{s}", "1minute" if s in frozen else "15minute", start, last)
+    except FetchAborted as e:
+        sys.exit(f"STOPPED: {e} — rerun to resume")
+    finally:
+        st = dl.stats
+        log(f"stock update to {last}: requests={st.requests} candles_added={st.candles} errors={st.errors}")
+        store.close()
+
+
 if __name__ == "__main__":
-    {"rank": rank, "minutes": minutes, "opens15": opens15}[sys.argv[1]]()
+    {"rank": rank, "minutes": minutes, "opens15": opens15, "update": update}[sys.argv[1]]()

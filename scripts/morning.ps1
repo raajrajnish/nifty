@@ -116,6 +116,14 @@ Start-Process -FilePath "powershell" -WorkingDirectory $root -WindowStyle Minimi
     -ArgumentList "-NoExit", "-Command", "`$Host.UI.RawUI.WindowTitle='tradingagent paper'; uv run tradingagent paper"
 Say "G1/G2 paper engine started (window 'tradingagent paper'; shown on the dashboard)."
 
+# 6d. (Re)start the forward-tournament watcher (P4, FIB71, CPR, HL1, BSE, R6 live signals + LLM verdicts) — PAPER ONLY
+Get-CimInstance Win32_Process | Where-Object {
+    $_.CommandLine -match 'tradingagent(\.exe"?)? tournament-live' -or $_.CommandLine -match "WindowTitle='tradingagent tournament'"
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Process -FilePath "powershell" -WorkingDirectory $root -WindowStyle Minimized `
+    -ArgumentList "-NoExit", "-Command", "`$Host.UI.RawUI.WindowTitle='tradingagent tournament'; uv run tradingagent tournament-live"
+Say "Tournament watcher started (window 'tradingagent tournament')."
+
 # 7. Wait until it answers, then open the browser
 Say "Starting dashboard..."
 $up = $false

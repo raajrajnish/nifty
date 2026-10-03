@@ -489,6 +489,49 @@ def cmd_paper(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tournament_live(_: argparse.Namespace) -> int:
+    """Live signal watcher for the intraday tournament candidates (paper only; LLM shadow verdicts)."""
+    from tradingagent.sim.discovery_study import load_expiries
+    from tradingagent.tournament import live
+
+    load_dotenv(ROOT / ".env")
+    clock = WallClock()
+    exps = load_expiries(ROOT / "data" / "expiries" / "NIFTY.csv")
+    live.run(clock.now().date(), ROOT / "data" / "raw", DB_PATH, exps, now=lambda: clock.now().replace(tzinfo=None))
+    return 0
+
+
+def cmd_tournament_eod(args: argparse.Namespace) -> int:
+    """Score all 10 candidates on official candles (forward days), ask the LLM about tomorrow's swing entries."""
+    from datetime import date as _date
+    from datetime import datetime as _dt
+
+    import pandas as pd
+
+    from tradingagent.sim.costs import CostModel
+    from tradingagent.sim.discovery_study import load_expiries
+    from tradingagent.tournament.eod import run_eod
+
+    load_dotenv(ROOT / ".env")
+    day = _date.fromisoformat(args.day) if args.day else _dt.now().date()
+    board = run_eod(DB_PATH, CostModel(load_config(ROOT / "config").costs),
+                    load_expiries(ROOT / "data" / "expiries" / "NIFTY.csv"), day, _dt.now, ask_llm=not args.no_llm)
+    with pd.option_context("display.width", 250, "display.max_columns", 20):
+        print(f"\n=== Forward tournament scoreboard (paper; ₹ per trade, 1 lot / ₹1 lakh per stock) — {day} ===")
+        print(board.to_string(index=False))
+    return 0
+
+
+def cmd_tournament_report(_: argparse.Namespace) -> int:
+    import pandas as pd
+
+    from tradingagent.tournament.eod import report
+
+    with pd.option_context("display.width", 250, "display.max_columns", 20):
+        print(report().to_string(index=False))
+    return 0
+
+
 def cmd_llm_shadow_check(_: argparse.Namespace) -> int:
     """One real 'risk of the day' call to check the API key, web search and budget plumbing (costs ~₹1–3).
     Recorded with kind='check' so it never counts in the forward evaluation."""
@@ -1093,6 +1136,14 @@ def main(argv: list[str] | None = None) -> int:
     pop.add_argument("--start", default="", help="stage B window start YYYY-MM-DD (default 2023-12-01)")
     pop.add_argument("--end", default="", help="stage B window end YYYY-MM-DD (default 2026-09-30)")
     pop.set_defaults(fn=cmd_backtest_popular)
+    sub.add_parser("tournament-live", help="live signal watcher for the 10-candidate forward tournament (paper)"
+                   ).set_defaults(fn=cmd_tournament_live)
+    te = sub.add_parser("tournament-eod", help="score the forward tournament on official candles (after close)")
+    te.add_argument("--day", default=None)
+    te.add_argument("--no-llm", action="store_true", help="skip the evening swing LLM calls")
+    te.set_defaults(fn=cmd_tournament_eod)
+    sub.add_parser("tournament-report", help="print the tournament scoreboard from saved results"
+                   ).set_defaults(fn=cmd_tournament_report)
     sub.add_parser("llm-shadow-check", help="one real LLM shadow call to verify key/web search (~Rs 1-3)"
                    ).set_defaults(fn=cmd_llm_shadow_check)
     sub.add_parser("backtest-swing", help="swing study on the Nifty 50 basket (daily bars, long only)"

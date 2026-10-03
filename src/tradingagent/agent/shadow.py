@@ -189,7 +189,17 @@ def signal_prompt(setup: str, state: dict[str, Any], events: list[dict[str, Any]
             f"The {setup} signal fired. Market facts (JSON):\n{json.dumps(facts, default=str)}\n\n"
             f"Event calendar near today (verified=false means not yet checked against the official source):\n"
             f"{json.dumps(events)}\n\nShould this {tr.get('side')} trade be TAKEN or SKIPPED today? "
-            f"confidence = your probability (0-1) that your decision is right. 2-4 short reasons.")
+            f"confidence = your probability (0-1) that your decision is right. 2-4 short reasons. {STRUCTURED_HELP}")
+
+
+def candidate_prompt(cand_id: str, name: str, description: str, weakness: str, facts: dict[str, Any],
+                     events: list[dict[str, Any]]) -> str:
+    """Generic tournament prompt (any of the 10 candidates). `facts` = signal + market snapshot, no outcome."""
+    return (f"Strategy {cand_id} - {name}: {description}\nKnown weakness: {weakness}\n\nThe {cand_id} signal fired. "
+            f"Facts at the signal (JSON; nothing after this moment is known):\n{json.dumps(facts, default=str)}\n\n"
+            f"Event calendar near today (verified=false = not yet checked):\n{json.dumps(events)}\n\n"
+            f"Should this trade be TAKEN or SKIPPED? confidence = your probability (0-1) that your decision is "
+            f"right. 2-4 short reasons. {STRUCTURED_HELP}")
 
 
 def morning_prompt(day: date, events: list[dict[str, Any]]) -> str:

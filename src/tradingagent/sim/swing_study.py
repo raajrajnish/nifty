@@ -91,8 +91,8 @@ def prepare(daily: pd.DataFrame) -> tuple[pd.DataFrame, set[date]]:
     return adj, ex_days
 
 
-def period_of(d: date) -> str | None:
-    return next((p for p, (a, b) in PERIODS.items() if a <= d <= b), None)
+def period_of(d: date, periods: dict[str, tuple[date, date]] | None = None) -> str | None:
+    return next((p for p, (a, b) in (periods or PERIODS).items() if a <= d <= b), None)
 
 
 # ---------------------------------------------------------------------------- SW1 / SW2
@@ -130,15 +130,15 @@ def _net_pct(entry_open: float, exit_open: float, costs: DeliveryCosts, mult: fl
     return (gross - mult * (costs.buy(buy_px * qty) + costs.sell(sell_px * qty))) / NOTIONAL * 100
 
 
-def run_signal_setup(sym: str, d: pd.DataFrame, ex_days: set[date], name: str,
-                     costs: DeliveryCosts) -> list[dict[str, Any]]:
+def run_signal_setup(sym: str, d: pd.DataFrame, ex_days: set[date], name: str, costs: DeliveryCosts,
+                     periods: dict[str, tuple[date, date]] | None = None) -> list[dict[str, Any]]:
     sig, ex = SETUPS[name]
     days = list(d.index)
     rows, i = [], 0
     need = ["sma200", "sma5", "rsi2", "atr14", "hh55", "ll20", "vol20"]
     while i < len(days) - 1:
         day, r = days[i], d.iloc[i]
-        per = period_of(day)
+        per = period_of(day, periods)
         if per is None or day in ex_days or r[need].isna().any() or not sig(r):
             i += 1
             continue

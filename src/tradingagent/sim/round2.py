@@ -20,8 +20,8 @@ HALVES = {"H-A": (date(2024, 1, 1), date(2025, 6, 30)), "H-B": (date(2025, 7, 1)
 STOCK_SLIP = 0.0005
 
 
-def half_of(d: date) -> str | None:
-    return next((h for h, (a, b) in HALVES.items() if a <= d <= b), None)
+def half_of(d: date, halves: dict[str, tuple[date, date]] | None = None) -> str | None:
+    return next((h for h, (a, b) in (halves or HALVES).items() if a <= d <= b), None)
 
 
 def opt_sym(exp: date, strike: int, side: str) -> str:
@@ -126,12 +126,13 @@ def short_straddle_path(ce: pd.DataFrame, pe: pd.DataFrame, stop_mult: float = 1
     return credit, float(m["close_ce"].iloc[-1] + m["close_pe"].iloc[-1]), "EOD_1510"
 
 
-def r6_short_straddle(store: MarketStore, idx: pd.DataFrame, expiries: list[date], costs: CostModel) -> pd.DataFrame:
+def r6_short_straddle(store: MarketStore, idx: pd.DataFrame, expiries: list[date], costs: CostModel,
+                      halves: dict[str, tuple[date, date]] | None = None) -> pd.DataFrame:
     """RESEARCH ONLY — selling. Two legs each charged as sell-then-buy with a doubled half-spread (0.22%)."""
     by = {d: g.reset_index(drop=True) for d, g in idx.groupby("day")}
     rows = []
     for d in expiries:
-        h = half_of(d)
+        h = half_of(d, halves)
         if h is None or d not in by:
             continue
         px = close_before(by[d], time(13, 30))

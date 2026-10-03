@@ -119,3 +119,24 @@ def test_adapter_has_no_order_methods():
 
     names = {n.lower() for n in dir(groww_adapter.GrowwMarketData)}
     assert not {n for n in names if any(w in n for w in ("order", "place", "cancel", "modify"))}
+
+
+class ExtrasFail(FakeSource):
+    def ltp(self, symbols, segment):
+        if "NSE_BSE" in symbols:
+            raise BrokerUnavailable("Bad Request")
+        return super().ltp(symbols, segment)
+
+
+def test_extra_cash_symbols_recorded_and_failure_never_breaks_nifty(make, tmp_path):
+    rec = make(FakeSource())
+    rec.setup()
+    rec._poll_ltp()  # noqa: SLF001
+    line = json.loads((tmp_path / "raw" / "date=2026-09-29" / "ltp.jsonl").read_text().splitlines()[-1])
+    want = {"NSE_NIFTY", "NSE_INDIAVIX", "NSE_BANKNIFTY", "NSE_HDFCBANK", "NSE_ICICIBANK", "NSE_BSE"}
+    assert want <= set(line["index"])
+    bad = make(ExtrasFail())
+    bad.setup()
+    bad._poll_ltp()  # noqa: SLF001
+    line = json.loads((tmp_path / "raw" / "date=2026-09-29" / "ltp.jsonl").read_text().splitlines()[-1])
+    assert set(line["index"]) == {"NSE_NIFTY", "NSE_INDIAVIX"} and "ltp extras" in bad.status.last_error

@@ -34,17 +34,19 @@ SETUP_NOTES = {
           "geometry). Puts carried most of the profit.",
 }
 
-SYSTEM_V1 = """You are an independent risk reviewer for a PAPER-trading research project on the Nifty 50 index \
-(India, NSE). Nothing you say places an order. Each trade already happened by a fixed rule; your job is to judge, \
-from today's context, whether THIS signal looks more likely than usual to fail.
+SYSTEM_V1 = """You are an independent risk reviewer for a PAPER-trading research project on Indian markets \
+(Nifty and Bank Nifty index options, and large NSE stocks). Nothing you say places an order. Each trade already \
+happened by a fixed, frozen rule; your job is to judge, from today's context, whether THIS signal looks more likely \
+than usual to fail.
 
 How to work:
-- Search the web for news from the last 24 hours that matters for Nifty today: Indian market news, RBI/government \
-announcements, big index-heavyweight news, and overnight global markets. Prefer reputable financial sources.
+- Search the web for news from the last 24 hours that matters for this trade's instrument: Indian market news, \
+RBI/government announcements, company news for a stock trade, big index-heavyweight news, and overnight global \
+markets. Prefer reputable financial sources.
 - Weigh that with the market facts and the event calendar you are given.
-- Be calibrated. A normal day with no specific risk → TAKE. Choose SKIP only when you can name a concrete, \
-current reason this setup's signal is likely to fail today (e.g. a scheduled event later in the session that could \
-reverse the move, news pointing the other way, an abnormal market state). Do not SKIP merely because markets are \
+- Be calibrated. A normal day with no specific risk → TAKE. Choose SKIP only when you can name a concrete, current \
+reason this setup's signal is likely to fail (e.g. a scheduled event during the holding period that could reverse \
+the move, news pointing the other way, an abnormal market state). Do not SKIP merely because markets are \
 uncertain — they always are.
 - Do not predict prices. Judge only whether today's context undermines this particular setup's logic.
 - Reply only with the JSON object required by the output schema."""
@@ -57,17 +59,34 @@ could cause a sharp move or reversal during the session) or AVOID (conditions so
 signals are unreliable). Be calibrated: most days are NORMAL. Reply only with the JSON object required by the \
 output schema."""
 
+REASON_TAGS = ["NO_SPECIFIC_RISK", "SCHEDULED_EVENT_TODAY", "SCHEDULED_EVENT_SOON", "NEWS_SUPPORTS_TRADE",
+               "NEWS_AGAINST_TRADE", "GLOBAL_CUES_SUPPORT", "GLOBAL_CUES_AGAINST", "HIGH_VOLATILITY", "LOW_VOLATILITY",
+               "TREND_SUPPORTS", "TREND_AGAINST", "EXPIRY_DYNAMICS", "KNOWN_SETUP_WEAKNESS", "LATE_IN_SESSION",
+               "STOCK_SPECIFIC_NEWS", "OTHER"]
+
+# v2 (2026-10-04, forward tournament): structured reasons so outcomes can later be regressed on them.
 SIGNAL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "decision": {"type": "string", "enum": ["TAKE", "SKIP"]},
         "confidence": {"type": "number"},
+        "reason_tags": {"type": "array", "items": {"type": "string", "enum": REASON_TAGS}},
+        "news_for_trade": {"type": "number"},
+        "event_risk": {"type": "number"},
+        "global_for_trade": {"type": "number"},
+        "volatility_view": {"type": "number"},
         "reasons": {"type": "array", "items": {"type": "string"}},
         "key_news": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["decision", "confidence", "reasons", "key_news"],
+    "required": ["decision", "confidence", "reason_tags", "news_for_trade", "event_risk", "global_for_trade",
+                 "volatility_view", "reasons", "key_news"],
     "additionalProperties": False,
 }
+STRUCTURED_HELP = ("Also fill the structured fields: reason_tags = every tag from the allowed list that drove your "
+                   "decision; news_for_trade = -1 (news clearly against this trade) .. 0 (neutral/none) .. 1 (clearly "
+                   "supports it); event_risk = 0 (no event risk) .. 1 (major event during the holding period); "
+                   "global_for_trade = -1 .. 1 (overnight/global cues against or for this trade's direction); "
+                   "volatility_view = -1 (unusually calm) .. 1 (unusually stormy).")
 MORNING_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -268,8 +287,9 @@ def decide(kind: str, day: date, setup: str | None, user: str, cfg: ShadowConfig
     if data is None:
         out["decision"] = "NO_DECISION"
     elif kind == "signal":
-        out |= {"decision": data["decision"], "confidence": data["confidence"], "reasons": data["reasons"],
-                "key_news": data["key_news"]}
+        out |= {k: data.get(k) for k in ("confidence", "reason_tags", "news_for_trade", "event_risk",
+                                         "global_for_trade", "volatility_view", "reasons", "key_news")}
+        out["decision"] = data["decision"]
     else:
         out |= {"decision": data["day_view"], "confidence": data["confidence"], "reasons": data["reasons"],
                 "key_news": data["key_news"]}

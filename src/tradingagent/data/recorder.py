@@ -38,6 +38,9 @@ class MarketDataSource(Protocol):
 class RecorderConfig:
     underlying: str = "NIFTY"
     index_symbols: tuple[str, ...] = ("NSE_NIFTY", "NSE_INDIAVIX")
+    # Forward tournament (2026-10-04): extra CASH symbols for P4/HL1 (Bank Nifty, HDFC Bank, ICICI Bank) and the
+    # BSE candidate. Requested SEPARATELY so a bad symbol can never break the NIFTY/VIX stream G1/G2 depend on.
+    extra_cash_symbols: tuple[str, ...] = ("NSE_BANKNIFTY", "NSE_HDFCBANK", "NSE_ICICIBANK", "NSE_BSE")
     strike_step: int = 50
     strikes_each_side: int = 5          # quoted with full depth (2 × (2N+1) contracts)
     chain_strikes_each_side: int = 20   # kept from each chain snapshot
@@ -194,6 +197,11 @@ class Recorder:
 
     def _poll_ltp(self) -> None:
         idx = self._src.ltp(self._cfg.index_symbols, "CASH")
+        if self._cfg.extra_cash_symbols:
+            try:
+                idx = {**self._src.ltp(self._cfg.extra_cash_symbols, "CASH"), **idx}
+            except Exception as e:  # extras are optional; NIFTY/VIX are still written
+                self._error("ltp extras", e)
         fno_syms = tuple(f"NSE_{s}" for s in ([self._future] if self._future else []) + self._tracked)
         fno = self._src.ltp(fno_syms, "FNO") if fno_syms else {}
         self._write("ltp", {"index": idx, "fno": fno})

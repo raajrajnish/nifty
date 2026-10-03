@@ -6,10 +6,10 @@ effort: medium                  # output_config.effort; keeps cost/latency modes
 max_tokens: 4000
 timeout_s: 120                  # per API request; the engine never waits on it (calls run in a background thread)
 web_search_max_uses: 4          # searches per call (billed ~$10 per 1,000)
-monthly_cap_inr: 500            # owner choice 2026-10-03 — over the cap → NO_DECISION, no call made
-max_calls_per_day: 12
+monthly_cap_inr: 1000           # owner choice 2026-10-03 (tournament) — over the cap → NO_DECISION, no call made
+max_calls_per_day: 20
 usd_inr: 88.0                   # conversion for the cap; update occasionally
 prices_usd_per_mtok:            # list prices (claude-api skill, cached 2026-09-25)
   claude-sonnet-5-5: {input: 2.0, output: 10.0}
 web_search_usd_each: 0.01
-prompt_version: v1              # changing the prompt text = new version = a new evaluation count (never pooled)
+prompt_version: v2              # changing the prompt text = new version = a new evaluation count (never pooled)

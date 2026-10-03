@@ -230,8 +230,9 @@ def simulate(sig: Signal, g: pd.DataFrame, costs: EquityIntradayCosts, cost_mult
             "net": gross - cst, "net2": gross - 2 * cst - 2 * qty * entry * SLIP}
 
 
-def run_stock(symbol: str, m1: pd.DataFrame, nifty: pd.DataFrame,
-              costs: EquityIntradayCosts) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+def run_stock(symbol: str, m1: pd.DataFrame, nifty: pd.DataFrame, costs: EquityIntradayCosts,
+              periods: dict[str, tuple[date, date]] | None = None,
+              setups: dict[str, Strat] | None = None) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     m1, bad_days = clean_bad_prints(m1)
     adj, events, ex_days = adjust_splits(m1)
     ex_days |= bad_days
@@ -241,12 +242,12 @@ def run_stock(symbol: str, m1: pd.DataFrame, nifty: pd.DataFrame,
     for d, g in adj.groupby("day"):
         if d in ex_days or d not in days.index or bool(days.at[d, "event_skip"]):
             continue
-        per = next((p for p, (s, e) in PERIODS.items() if s <= d <= e), None)
+        per = next((p for p, (s, e) in (periods or PERIODS).items() if s <= d <= e), None)
         if per is None or pd.isna(days.at[d, "prev_close"]):
             continue
         g = g.reset_index(drop=True)
         row = days.loc[d]
-        for name, fn in SETUPS.items():
+        for name, fn in (setups or SETUPS).items():
             sig = fn(g, row, nifty_by_day.get(d))
             if sig is None:
                 continue

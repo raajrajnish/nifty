@@ -10,9 +10,12 @@ day, a morning "risk of the day" note. It never changes, delays or blocks a pape
 import hashlib
 import json
 import os
+import shutil
+import subprocess
+import tempfile
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -23,7 +26,6 @@ ROOT = Path(__file__).resolve().parents[3]
 CONFIG = ROOT / "config" / "llm_shadow.yaml"
 EVENTS = ROOT / "config" / "event_calendar.yaml"
 LEDGER = ROOT / "data" / "paper" / "llm_shadow.jsonl"
-FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 SETUP_NOTES = {
     "G1": "Narrow-range opening breakout on a day that opened outside yesterday's range. Backtest +₹833/trade "
@@ -77,16 +79,18 @@ SIGNAL_SCHEMA: dict[str, Any] = {
         "volatility_view": {"type": "number"},
         "reasons": {"type": "array", "items": {"type": "string"}},
         "key_news": {"type": "array", "items": {"type": "string"}},
+        "sources": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["decision", "confidence", "reason_tags", "news_for_trade", "event_risk", "global_for_trade",
-                 "volatility_view", "reasons", "key_news"],
+                 "volatility_view", "reasons", "key_news", "sources"],
     "additionalProperties": False,
 }
-STRUCTURED_HELP = ("Also fill the structured fields: reason_tags = every tag from the allowed list that drove your "
-                   "decision; news_for_trade = -1 (news clearly against this trade) .. 0 (neutral/none) .. 1 (clearly "
-                   "supports it); event_risk = 0 (no event risk) .. 1 (major event during the holding period); "
-                   "global_for_trade = -1 .. 1 (overnight/global cues against or for this trade's direction); "
-                   "volatility_view = -1 (unusually calm) .. 1 (unusually stormy).")
+STRUCTURED_HELP = ("List the URLs of the web pages you actually used in sources. Also fill the structured fields: "
+                   "reason_tags = every tag from the allowed list that drove your decision; news_for_trade = -1 "
+                   "(news clearly against this trade) .. 0 (neutral/none) .. 1 (clearly supports it); event_risk = 0 "
+                   "(no event risk) .. 1 (major event during the holding period); global_for_trade = -1 .. 1 "
+                   "(overnight/global cues against or for this trade's direction); volatility_view = -1 (unusually "
+                   "calm) .. 1 (unusually stormy).")
 MORNING_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -94,41 +98,28 @@ MORNING_SCHEMA: dict[str, Any] = {
         "confidence": {"type": "number"},
         "reasons": {"type": "array", "items": {"type": "string"}},
         "key_news": {"type": "array", "items": {"type": "string"}},
+        "sources": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["day_view", "confidence", "reasons", "key_news"],
+    "required": ["day_view", "confidence", "reasons", "key_news", "sources"],
     "additionalProperties": False,
 }
 
 
-# ---------------------------------------------------------------------------- config / ledger / cost
+# ---------------------------------------------------------------------------- config / ledger
 @dataclass(frozen=True)
 class ShadowConfig:
     enabled: bool = True
     model: str = "claude-sonnet-5-5"
-    effort: str = "medium"
-    max_tokens: int = 4000
-    timeout_s: float = 120.0
-    web_search_max_uses: int = 4
-    monthly_cap_inr: float = 500.0
-    max_calls_per_day: int = 12
-    usd_inr: float = 88.0
-    prices_usd_per_mtok: dict[str, dict[str, float]] = field(default_factory=dict)
-    web_search_usd_each: float = 0.01
-    prompt_version: str = "v1"
+    timeout_s: float = 240.0
+    max_calls_per_day: int = 20
+    claude_path: str = ""            # "" = find `claude` on PATH or in ~/.local/bin
+    usd_inr: float = 88.0            # only to show the CLI's *equivalent* cost (not billed on a subscription)
+    prompt_version: str = "v2"
 
     @classmethod
     def load(cls, path: Path = CONFIG) -> "ShadowConfig":
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
         return cls(**{k: v for k, v in (raw or {}).items() if k in cls.__dataclass_fields__})
-
-
-def cost_inr(cfg: ShadowConfig, usage: dict[str, int]) -> float:
-    p = cfg.prices_usd_per_mtok.get(cfg.model, {"input": 2.0, "output": 10.0})
-    inp = usage.get("input_tokens", 0) + 1.25 * usage.get("cache_creation_input_tokens", 0) \
-        + 0.1 * usage.get("cache_read_input_tokens", 0)
-    usd = inp / 1e6 * p["input"] + usage.get("output_tokens", 0) / 1e6 * p["output"] \
-        + usage.get("web_search_requests", 0) * cfg.web_search_usd_each
-    return round(usd * cfg.usd_inr, 2)
 
 
 class Ledger:
@@ -141,9 +132,6 @@ class Ledger:
             return []
         with self.path.open(encoding="utf-8") as f:
             return [json.loads(x) for x in f if x.strip()]
-
-    def month_spend_inr(self, day: date) -> float:
-        return sum(float(r.get("cost_inr") or 0) for r in self.rows() if str(r.get("day", ""))[:7] == f"{day:%Y-%m}")
 
     def calls_on(self, day: date) -> int:
         return sum(1 for r in self.rows() if r.get("day") == str(day) and r.get("called"))
@@ -207,93 +195,80 @@ def morning_prompt(day: date, events: list[dict[str, Any]]) -> str:
             f"classification. confidence = probability (0-1) your classification is right. 2-4 short reasons.")
 
 
-# ---------------------------------------------------------------------------- API call (never raises)
-def call_claude(client: Any, cfg: ShadowConfig, system: str, user: str,
-                schema: dict[str, Any]) -> tuple[dict[str, Any] | None, list[dict[str, str]], dict[str, int], str]:
-    """Returns (parsed JSON or None, web sources actually retrieved, usage totals, error text)."""
-    import anthropic
+# ---------------------------------------------------------------------------- Claude Code backend (never raises)
+BackendResult = tuple[dict[str, Any] | None, list[str], dict[str, Any], str]
+Backend = Callable[["ShadowConfig", str, str, dict[str, Any]], BackendResult]
+WORKDIR = Path(tempfile.gettempdir()) / "tradingagent_llm"     # neutral cwd: no project CLAUDE.md/settings/hooks
 
-    tools = [{"type": "web_search_20260209", "name": "web_search", "max_uses": cfg.web_search_max_uses,
-              "user_location": {"type": "approximate", "country": "IN", "timezone": "Asia/Kolkata"}}]
-    messages: list[dict[str, Any]] = [{"role": "user", "content": user}]
-    usage = {"input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0,
-             "cache_read_input_tokens": 0, "web_search_requests": 0}
-    sources: list[dict[str, str]] = []
+
+def find_claude(cfg: ShadowConfig) -> str | None:
+    if cfg.claude_path:
+        return cfg.claude_path if Path(cfg.claude_path).exists() else None
+    found = shutil.which("claude")
+    if found:
+        return found
+    local = Path.home() / ".local" / "bin" / ("claude.exe" if os.name == "nt" else "claude")
+    return str(local) if local.exists() else None
+
+
+def claude_code_backend(cfg: ShadowConfig, system: str, user: str, schema: dict[str, Any]) -> BackendResult:
+    """One headless Claude Code call (`claude -p`) under the owner's Claude subscription login: no API key and no
+    separate bill (it counts against the plan's usage limits). Only the WebSearch tool is available. API-key
+    variables are removed from the child environment so it can never fall back to API billing.
+    Returns (structured JSON or None, source URLs the model reports, usage info, error text)."""
+    exe = find_claude(cfg)
+    if exe is None:
+        return None, [], {}, "claude CLI not found (install Claude Code or set claude_path)"
+    cmd = [exe, "-p", "--output-format", "json", "--model", cfg.model, "--tools", "WebSearch",
+           "--allowedTools", "WebSearch", "--no-session-persistence", "--system-prompt", system,
+           "--json-schema", json.dumps(schema)]
+    env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
     try:
-        for _ in range(4):                                   # first call + up to 3 pause_turn continuations
-            resp = client.beta.messages.create(
-                model=cfg.model, max_tokens=cfg.max_tokens, system=system, messages=messages, tools=tools,
-                output_config={"effort": cfg.effort, "format": {"type": "json_schema", "schema": schema}},
-                betas=[FALLBACK_BETA], extra_body={"fallbacks": "default"}, timeout=cfg.timeout_s)
-            u = resp.usage
-            for k in ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"):
-                usage[k] += int(getattr(u, k, 0) or 0)
-            stu = getattr(u, "server_tool_use", None)
-            usage["web_search_requests"] += int(getattr(stu, "web_search_requests", 0) or 0) if stu else 0
-            for b in resp.content:
-                if b.type == "web_search_tool_result" and isinstance(b.content, list):
-                    sources += [{"url": r.url, "title": getattr(r, "title", "")} for r in b.content
-                                if getattr(r, "type", "") == "web_search_result"]
-            if resp.stop_reason == "pause_turn":
-                messages = [messages[0], {"role": "assistant", "content": resp.content}]
-                continue
-            if resp.stop_reason == "refusal":
-                return None, sources, usage, f"refusal: {getattr(resp, 'stop_details', None)}"
-            tail: list[str] = []                             # the answer = text blocks after the last tool block
-            for b in reversed(resp.content):
-                if b.type != "text":
-                    if tail:
-                        break
-                    continue
-                tail.insert(0, b.text)
-            if not tail:
-                return None, sources, usage, f"no text (stop_reason={resp.stop_reason})"
-            answer = "".join(tail).strip()
-            try:
-                return json.loads(answer), sources, usage, ""
-            except json.JSONDecodeError:
-                return None, sources, usage, f"bad JSON: {answer[:200]}"
-        return None, sources, usage, "pause_turn limit reached"
-    except anthropic.AuthenticationError:
-        return None, sources, usage, "authentication failed (check ANTHROPIC_API_KEY)"
-    except anthropic.RateLimitError:
-        return None, sources, usage, "rate limited"
-    except anthropic.APIStatusError as e:
-        return None, sources, usage, f"API error {e.status_code}: {str(e)[:200]}"
-    except anthropic.APIConnectionError as e:
-        return None, sources, usage, f"connection error: {str(e)[:200]}"
-    except Exception as e:  # never let the shadow filter break anything
-        return None, sources, usage, f"{type(e).__name__}: {str(e)[:200]}"
+        WORKDIR.mkdir(parents=True, exist_ok=True)
+        # No shell; fixed argument list; the executable is the local `claude` CLI; prompt text goes via stdin.
+        p = subprocess.run(cmd, input=user, capture_output=True, text=True, encoding="utf-8",  # noqa: S603
+                           timeout=cfg.timeout_s, cwd=WORKDIR, env=env, check=False)
+    except subprocess.TimeoutExpired:
+        return None, [], {}, f"timeout after {cfg.timeout_s:.0f}s"
+    except OSError as e:
+        return None, [], {}, f"could not start claude: {e}"
+    try:
+        j = json.loads(p.stdout)
+    except json.JSONDecodeError:
+        return None, [], {}, f"bad CLI output (exit {p.returncode}): {(p.stdout or p.stderr)[:200]}"
+    usage = {"equiv_cost_usd": j.get("total_cost_usd"), "num_turns": j.get("num_turns"),
+             "web_search_requests": sum(int(m.get("webSearchRequests") or 0)
+                                        for m in (j.get("modelUsage") or {}).values()),
+             "duration_ms": j.get("duration_ms")}
+    if j.get("is_error") or j.get("subtype") != "success":
+        return None, [], usage, f"CLI error: {str(j.get('result') or j.get('subtype'))[:200]}"
+    data = j.get("structured_output")
+    if not isinstance(data, dict):
+        return None, [], usage, f"no structured output: {str(j.get('result'))[:200]}"
+    return data, [str(u) for u in data.get("sources") or []][:20], usage, ""
 
 
 # ---------------------------------------------------------------------------- decide (records always)
 def decide(kind: str, day: date, setup: str | None, user: str, cfg: ShadowConfig, ledger: Ledger,
-           now: Callable[[], datetime], client_factory: Callable[[], Any] | None = None,
+           now: Callable[[], datetime], backend: Backend | None = None,
            extra: dict[str, Any] | None = None) -> dict[str, Any]:
     system = SYSTEM_V1 if kind == "signal" else MORNING_SYSTEM_V1
     rec: dict[str, Any] = {"day": str(day), "kind": kind, "setup": setup, **(extra or {}), "model": cfg.model,
-                           "prompt_version": cfg.prompt_version, "asked_at": now().isoformat(timespec="seconds"),
-                           "input_hash": hashlib.sha256((system + user).encode()).hexdigest()[:16],
-                           "called": False, "cost_inr": 0.0}
-    why_not = ""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        why_not = "no ANTHROPIC_API_KEY"
-    elif ledger.month_spend_inr(day) >= cfg.monthly_cap_inr:
-        why_not = f"monthly cap ₹{cfg.monthly_cap_inr:.0f} reached"
-    elif ledger.calls_on(day) >= cfg.max_calls_per_day:
-        why_not = f"daily call limit {cfg.max_calls_per_day} reached"
-    if why_not:
-        ledger.append({**rec, "decision": "NO_DECISION", "error": why_not, "decided_at": now().isoformat()})
-        return rec | {"decision": "NO_DECISION", "error": why_not}
-    if client_factory is None:
-        import anthropic
-        client_factory = lambda: anthropic.Anthropic(max_retries=1)  # noqa: E731
+                           "backend": "claude_code", "prompt_version": cfg.prompt_version,
+                           "asked_at": now().isoformat(timespec="seconds"),
+                           "input_hash": hashlib.sha256((system + user).encode()).hexdigest()[:16], "called": False}
+    if ledger.calls_on(day) >= cfg.max_calls_per_day:
+        why = f"daily call limit {cfg.max_calls_per_day} reached (protects your Claude plan's usage limits)"
+        ledger.append({**rec, "decision": "NO_DECISION", "error": why, "decided_at": now().isoformat()})
+        return rec | {"decision": "NO_DECISION", "error": why}
     t0 = now()
-    data, sources, usage, err = call_claude(client_factory(), cfg, system, user,
-                                            SIGNAL_SCHEMA if kind == "signal" else MORNING_SCHEMA)
+    data, sources, usage, err = (backend or claude_code_backend)(
+        cfg, system, user, SIGNAL_SCHEMA if kind == "signal" else MORNING_SCHEMA)
+    eq = usage.get("equiv_cost_usd")
     out = {**rec, "called": True, "decided_at": now().isoformat(timespec="seconds"),
-           "latency_s": round((now() - t0).total_seconds(), 1), "usage": usage, "cost_inr": cost_inr(cfg, usage),
-           "sources": sources[:20], "error": err}
+           "latency_s": round((now() - t0).total_seconds(), 1), "usage": usage,
+           "equiv_cost_inr": round(float(eq) * cfg.usd_inr, 2) if eq is not None else None,
+           "sources_model_reported": sources, "error": err}
     if data is None:
         out["decision"] = "NO_DECISION"
     elif kind == "signal":
@@ -313,9 +288,9 @@ class ShadowRunner:
     (day, morning) and per (day, setup) trade. Never blocks; never touches the engine's state."""
 
     def __init__(self, cfg: ShadowConfig, ledger: Ledger, now: Callable[[], datetime],
-                 client_factory: Callable[[], Any] | None = None, log: Callable[[str], None] = print,
+                 backend: Backend | None = None, log: Callable[[str], None] = print,
                  start_thread: Callable[[Callable[[], None]], None] | None = None) -> None:
-        self.cfg, self.ledger, self.now, self.client_factory, self.log = cfg, ledger, now, client_factory, log
+        self.cfg, self.ledger, self.now, self.backend, self.log = cfg, ledger, now, backend, log
         self.started: set[tuple[str, str | None]] = set()
         self.start_thread = start_thread or (lambda fn: threading.Thread(target=fn, daemon=True).start())
 
@@ -327,7 +302,7 @@ class ShadowRunner:
             self.started.add(("morning", None))
             ev = load_events(day)
             self._spawn(lambda: decide("morning", day, None, morning_prompt(day, ev), self.cfg, self.ledger,
-                                       self.now, self.client_factory))
+                                       self.now, self.backend))
         state = engine.state()
         for name, st in state["setups"].items():
             tr = st.get("trade") or {}
@@ -338,7 +313,7 @@ class ShadowRunner:
             extra = {"signal_ts": tr.get("entry_ts"), "side": tr.get("side"), "strike": tr.get("strike"),
                      "entry_px": tr.get("entry_px")}
             def ask(n: str = name, u: str = user, x: dict[str, Any] = extra) -> None:
-                decide("signal", day, n, u, self.cfg, self.ledger, self.now, self.client_factory, x)
+                decide("signal", day, n, u, self.cfg, self.ledger, self.now, self.backend, x)
 
             self._spawn(ask)
             self.log(f"LLM shadow: asked about {name} {tr.get('side')} (shadow only — the paper trade is unchanged)")

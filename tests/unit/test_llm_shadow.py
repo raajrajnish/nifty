@@ -1,41 +1,32 @@
 import json
+import subprocess
 from datetime import date, datetime
 from types import SimpleNamespace as NS
 
 import pytest
 
-from tradingagent.agent.shadow import Ledger, ShadowConfig, ShadowRunner, cost_inr, decide
+from tradingagent.agent import shadow
+from tradingagent.agent.shadow import Ledger, ShadowConfig, ShadowRunner, claude_code_backend, decide
 
 DAY = date(2026, 10, 5)
-CFG = ShadowConfig(prices_usd_per_mtok={"claude-sonnet-5-5": {"input": 2.0, "output": 10.0}}, usd_inr=88.0)
+CFG = ShadowConfig(claude_path="", usd_inr=88.0)
 NOW = lambda: datetime(2026, 10, 5, 9, 40)  # noqa: E731
+SIGNAL = {"decision": "SKIP", "confidence": 0.7, "reason_tags": ["SCHEDULED_EVENT_TODAY"], "news_for_trade": -0.2,
+          "event_risk": 0.8, "global_for_trade": 0.1, "volatility_view": 0.3, "reasons": ["RBI at 10:00"],
+          "key_news": ["policy day"], "sources": ["https://x.example/a"]}
+MORNING = {"day_view": "NORMAL", "confidence": 0.8, "reasons": ["quiet"], "key_news": [], "sources": []}
 
 
-def usage(i=10_000, o=1_000, s=2):
-    return NS(input_tokens=i, output_tokens=o, cache_creation_input_tokens=0, cache_read_input_tokens=0,
-              server_tool_use=NS(web_search_requests=s))
+def fake_backend(answers):
+    calls = []
 
-
-def resp(blocks, stop="end_turn", u=None):
-    return NS(content=blocks, stop_reason=stop, usage=u or usage(), stop_details=None)
-
-
-SEARCH = NS(type="web_search_tool_result", content=[NS(type="web_search_result", url="https://x.example/a", title="A")])
-ANSWER = NS(type="text", text=json.dumps({"decision": "SKIP", "confidence": 0.7, "reasons": ["RBI at 10:00"],
-                                          "key_news": ["policy day"]}))
-
-
-class FakeClient:
-    def __init__(self, responses):
-        self.responses, self.calls = list(responses), []
-        self.beta = NS(messages=NS(create=self._create))
-
-    def _create(self, **kw):
-        self.calls.append(kw)
-        r = self.responses.pop(0)
-        if isinstance(r, Exception):
-            raise r
-        return r
+    def b(cfg, system, user, schema):
+        calls.append((system, user, schema))
+        a = answers.pop(0)
+        if isinstance(a, Exception):
+            raise a
+        return a
+    return b, calls
 
 
 @pytest.fixture
@@ -43,74 +34,94 @@ def ledger(tmp_path):
     return Ledger(tmp_path / "shadow.jsonl")
 
 
-@pytest.fixture
-def key(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-not-a-real-key")
+# ---- the Claude Code CLI backend --------------------------------------------------------------------------------
+def cli_json(**over):
+    j = {"type": "result", "subtype": "success", "is_error": False, "num_turns": 3, "total_cost_usd": 0.05,
+         "duration_ms": 9000, "modelUsage": {"claude-sonnet-5-5": {"webSearchRequests": 0},
+                                             "claude-haiku-4-5-20251001": {"webSearchRequests": 2}},
+         "result": json.dumps(SIGNAL), "structured_output": SIGNAL}
+    return json.dumps(j | over)
 
 
-def test_cost_by_hand():
-    # 10k in × $2/M + 1k out × $10/M + 2 searches × $0.01 = $0.05 → ₹4.40
-    assert cost_inr(CFG, {"input_tokens": 10_000, "output_tokens": 1_000, "web_search_requests": 2}) == 4.4
+def test_cli_backend_parses_output_and_strips_api_keys(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"], seen["kw"] = cmd, kw
+        return NS(stdout=cli_json(), stderr="", returncode=0)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(shadow, "find_claude", lambda cfg: "claude")
+    monkeypatch.setattr(shadow, "WORKDIR", tmp_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy-value-not-a-key")
+    data, sources, usage, err = claude_code_backend(CFG, "sys", "user prompt", {"type": "object"})
+    assert err == "" and data["decision"] == "SKIP" and sources == ["https://x.example/a"]
+    assert usage["web_search_requests"] == 2 and usage["equiv_cost_usd"] == 0.05
+    cmd = seen["cmd"]
+    assert cmd[:2] == ["claude", "-p"] and cmd[cmd.index("--tools") + 1] == "WebSearch"
+    assert cmd[cmd.index("--model") + 1] == "claude-sonnet-5-5" and "--json-schema" in cmd
+    assert seen["kw"]["input"] == "user prompt" and "ANTHROPIC_API_KEY" not in seen["kw"]["env"]  # subscription only
 
 
-def test_no_key_records_no_decision_without_calling(ledger, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    fc = FakeClient([])
-    r = decide("signal", DAY, "G1", "q", CFG, ledger, NOW, lambda: fc)
-    assert r["decision"] == "NO_DECISION" and "ANTHROPIC_API_KEY" in r["error"] and fc.calls == []
-    assert ledger.rows()[0]["called"] is False
+@pytest.mark.parametrize("out,expect", [
+    (cli_json(is_error=True, subtype="error_during_execution", result="usage limit reached"), "CLI error"),
+    (cli_json(structured_output=None), "no structured output"),
+    ("not json at all", "bad CLI output"),
+])
+def test_cli_backend_failures_are_reported_not_raised(monkeypatch, tmp_path, out, expect):
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: NS(stdout=out, stderr="", returncode=1))
+    monkeypatch.setattr(shadow, "find_claude", lambda cfg: "claude")
+    monkeypatch.setattr(shadow, "WORKDIR", tmp_path)
+    data, _, _, err = claude_code_backend(CFG, "s", "u", {})
+    assert data is None and err.startswith(expect)
 
 
-def test_budget_cap_blocks_the_call(ledger, key):
-    ledger.append({"day": "2026-10-01", "kind": "signal", "called": True, "cost_inr": 500.0})
-    fc = FakeClient([])
-    r = decide("signal", DAY, "G1", "q", CFG, ledger, NOW, lambda: fc)
-    assert r["decision"] == "NO_DECISION" and "monthly cap" in r["error"] and fc.calls == []
-    ledger.append({"day": "2026-09-30", "kind": "signal", "called": True, "cost_inr": 999.0})  # other month: ignored
-    assert ledger.month_spend_inr(DAY) == 500.0
+def test_cli_missing_and_timeout(monkeypatch, tmp_path):
+    monkeypatch.setattr(shadow, "find_claude", lambda cfg: None)
+    assert claude_code_backend(CFG, "s", "u", {})[3].startswith("claude CLI not found")
+    monkeypatch.setattr(shadow, "find_claude", lambda cfg: "claude")
+    monkeypatch.setattr(shadow, "WORKDIR", tmp_path)
+
+    def slow(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, 240)
+    monkeypatch.setattr(subprocess, "run", slow)
+    assert claude_code_backend(CFG, "s", "u", {})[3].startswith("timeout")
 
 
-def test_signal_decision_sources_and_cost_recorded(ledger, key):
-    fc = FakeClient([resp([NS(type="server_tool_use"), SEARCH, ANSWER])])
-    r = decide("signal", DAY, "G1", "q", CFG, ledger, NOW, lambda: fc, {"side": "PE"})
-    assert r["decision"] == "SKIP" and r["confidence"] == 0.7 and r["reasons"] == ["RBI at 10:00"]
-    assert r["sources"] == [{"url": "https://x.example/a", "title": "A"}] and r["cost_inr"] == 4.4
-    kw = fc.calls[0]
-    assert kw["model"] == "claude-sonnet-5-5" and kw["tools"][0]["type"] == "web_search_20260209"
-    assert kw["output_config"]["format"]["type"] == "json_schema" and kw["extra_body"] == {"fallbacks": "default"}
-    assert ledger.rows()[-1]["side"] == "PE"
+# ---- decide / ledger ---------------------------------------------------------------------------------------------
+def test_signal_decision_with_structured_reasons_recorded(ledger):
+    b, calls = fake_backend([(dict(SIGNAL), ["https://x.example/a"], {"equiv_cost_usd": 0.05}, "")])
+    r = decide("signal", DAY, "G1", "q", CFG, ledger, NOW, b, {"side": "PE"})
+    assert r["decision"] == "SKIP" and r["reason_tags"] == ["SCHEDULED_EVENT_TODAY"] and r["event_risk"] == 0.8
+    assert r["sources_model_reported"] == ["https://x.example/a"] and r["equiv_cost_inr"] == 4.4
+    assert r["backend"] == "claude_code" and ledger.rows()[-1]["side"] == "PE"
+    assert calls[0][2]["required"][-1] == "sources"                       # the v2 signal schema was sent
 
 
-def test_pause_turn_is_continued_and_usage_summed(ledger, key):
-    fc = FakeClient([resp([NS(type="server_tool_use")], stop="pause_turn"), resp([SEARCH, ANSWER])])
-    r = decide("signal", DAY, "G1", "q", CFG, ledger, NOW, lambda: fc)
-    assert r["decision"] == "SKIP" and len(fc.calls) == 2 and r["usage"]["input_tokens"] == 20_000
-    assert fc.calls[1]["messages"][1]["role"] == "assistant"          # paused turn sent back, no extra user text
+def test_daily_call_limit_protects_plan_usage(ledger):
+    for _ in range(20):
+        ledger.append({"day": str(DAY), "kind": "signal", "called": True})
+    b, calls = fake_backend([])
+    r = decide("signal", DAY, "G1", "q", CFG, ledger, NOW, b)
+    assert r["decision"] == "NO_DECISION" and "daily call limit" in r["error"] and calls == []
 
 
-def test_api_failure_never_raises(ledger, key):
-    fc = FakeClient([RuntimeError("boom")])
-    r = decide("signal", DAY, "G2", "q", CFG, ledger, NOW, lambda: fc)
-    assert r["decision"] == "NO_DECISION" and "boom" in r["error"]
-    bad = FakeClient([resp([NS(type="text", text="not json")])])
-    assert decide("signal", DAY, "G2", "q", CFG, ledger, NOW, lambda: bad)["error"].startswith("bad JSON")
+def test_backend_error_records_no_decision(ledger):
+    b, _ = fake_backend([(None, [], {}, "CLI error: usage limit reached")])
+    r = decide("signal", DAY, "G2", "q", CFG, ledger, NOW, b)
+    assert r["decision"] == "NO_DECISION" and "usage limit" in r["error"] and ledger.rows()[-1]["called"] is True
 
 
-def test_runner_asks_once_per_day_and_per_trade(ledger, key):
-    answers = [resp([SEARCH, NS(type="text", text=json.dumps(
-        {"day_view": "NORMAL", "confidence": 0.8, "reasons": ["quiet"], "key_news": []}))]),
-        resp([SEARCH, ANSWER])]
-    fc = FakeClient(answers)
-    run = ShadowRunner(CFG, ledger, NOW, lambda: fc, log=lambda m: None, start_thread=lambda fn: fn())
+def test_runner_asks_once_per_day_and_per_trade(ledger):
+    b, calls = fake_backend([(dict(MORNING), [], {}, ""), (dict(SIGNAL), [], {}, "")])
+    run = ShadowRunner(CFG, ledger, NOW, b, log=lambda m: None, start_thread=lambda fn: fn())
     trade = {"side": "PE", "strike": 24500, "entry_ts": "2026-10-05T09:40:00", "entry_px": 120.0, "stop_px": 60.0}
     state = {"day": str(DAY), "as_of": "2026-10-05T09:40:00", "expiry": "2026-10-06",
              "market": {"index": 24480.0}, "setups": {"G1": {"trade": trade, "checks": {}, "summary": "s"},
                                                        "G2": {"trade": None, "checks": {}, "summary": "s"}}}
     eng = NS(day=DAY, state=lambda: state)
     run.tick(eng)
-    run.tick(eng)                                                      # nothing new
+    run.tick(eng)
     kinds = [(r["kind"], r["setup"], r["decision"]) for r in ledger.rows()]
-    assert kinds == [("morning", None, "NORMAL"), ("signal", "G1", "SKIP")] and len(fc.calls) == 2
-    fresh = ShadowRunner(CFG, ledger, NOW, lambda: fc, log=lambda m: None, start_thread=lambda fn: fn())
-    fresh.tick(eng)                                                    # restart same day: ledger prevents repeats
-    assert len(fc.calls) == 2
+    assert kinds == [("morning", None, "NORMAL"), ("signal", "G1", "SKIP")] and len(calls) == 2
+    ShadowRunner(CFG, ledger, NOW, b, log=lambda m: None, start_thread=lambda fn: fn()).tick(eng)
+    assert len(calls) == 2                                               # restart: the ledger prevents repeats

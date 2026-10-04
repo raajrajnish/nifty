@@ -134,7 +134,7 @@ def _shadow_runner(now: Callable[[], datetime], log: Callable[[str], None]) -> A
         cfg = ShadowConfig.load()
         if not cfg.enabled:
             return None
-        log(f"LLM shadow filter ON ({cfg.model}, cap ₹{cfg.monthly_cap_inr:.0f}/month) — records only.")
+        log(f"LLM shadow filter ON ({cfg.model} via Claude Code, ≤{cfg.max_calls_per_day} calls/day) — records only.")
         return ShadowRunner(cfg, Ledger(), now, log=log)
     except Exception as e:
         log(f"LLM shadow filter unavailable (ignored): {e}")

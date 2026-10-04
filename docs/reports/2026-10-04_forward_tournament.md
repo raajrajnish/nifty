@@ -24,7 +24,7 @@
 | BSE | 15-min ORB with Nifty agreeing, on BSE Ltd | `stock_study.st1_orb_with_nifty` | BSE stock, intraday, long/short | +0.16%/trade (P2 only) |
 | SW1 | RSI-2 pullback above SMA200 | `swing_study.sw1_signal` / `sw1_exit` | Nifty 50 stocks, delivery, long | +0.22%/trade (P1 only) |
 
-## LLM verdict per signal (shadow; prompt version v2, Claude Sonnet 5.5, cap ₹1,000/month)
+## LLM verdict per signal (shadow; prompt version v2, Claude Sonnet 5.5 via headless Claude Code on the owner's subscription, ≤ 20 calls/day — no API billing)
 - **Intraday candidates** (G1, G2, P4, FIB71, R6, CPR, HL1, BSE): signals are detected **live** from recorder prices, and the LLM is asked at the signal time.
 - **Swing candidates** (SW1, SW2): signals are known at the close; the LLM is asked that evening, before the next day's entry.
 - **Morning:** one "risk of the day" note.

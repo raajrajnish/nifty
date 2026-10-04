@@ -76,3 +76,15 @@ The prompt text is versioned (`prompt_version`). **Changing the prompt starts a 
   - Sources recorded are the URLs the search actually returned, not the model's claims.
 - **Key setup:** `scripts/set_anthropic_key.ps1` (hidden input, saved to `.env`, never printed). `tradingagent llm-shadow-check` makes one real call (kind=`check`, which never counts in the evaluation).
 - **Evaluation:** the pre-declared test above is run on `data/paper/llm_shadow.jsonl` joined with `data/paper/live_trades.csv` at 30 signals or on 2027-02-28. Only `kind=signal` records with `decided_at` < the trade's exit time count.
+
+## Change 2026-10-04 (owner): Claude Code subscription instead of the paid API
+The owner has a Claude Pro subscription and no API credits (the API is billed separately). So the filter now calls **headless Claude Code** (`claude -p`) under the owner's own login:
+- **Same model** (Sonnet 5.5), **same prompts and structured schema** (v2), and **web search** via Claude Code's WebSearch tool, the only tool allowed.
+- **No API key, no separate bill.** Calls count against the plan's usage limits. `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` are removed from the child environment, so a call can never fall back to API billing.
+- **The ₹ cap is removed.** A **20 calls/day** limit protects the owner's own usage. If the plan's limit is hit, the call is recorded as `NO_DECISION`.
+- **Sources** are now the URLs the model *reports* using (`sources_model_reported`). The CLI does not return the raw search results.
+- **Removed:**
+  - `scripts/set_anthropic_key.ps1`;
+  - the `anthropic` SDK dependency;
+  - the API-pricing settings.
+- **Probe on 2026-10-04:** one call of about 11 s; structured JSON returned; a web search found a same-day Indian market headline.

@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from tradingagent.agent.shadow import Ledger, ShadowConfig, candidate_prompt, decide, load_events
+from tradingagent.agent.shadow import Backend, Ledger, ShadowConfig, candidate_prompt, decide, load_events
 from tradingagent.data.store import MarketStore
 from tradingagent.sim.costs import CostModel
 from tradingagent.sim.timing_study import bootstrap_ci
@@ -42,7 +42,7 @@ def swing_facts(sym: str, d: pd.DataFrame, day: date, cid: str) -> dict[str, Any
 
 
 def ask_swing(trades: pd.DataFrame, data: dict[str, pd.DataFrame], day: date, cfg: ShadowConfig, ledger: Ledger,
-              now: Callable[[], datetime], client_factory: Callable[[], Any] | None = None,
+              now: Callable[[], datetime], backend: Backend | None = None,
               log: Callable[[str], None] = print) -> int:
     new = trades[trades["cand"].isin(["SW1", "SW2"]) & (trades["day"] == day)] if len(trades) else trades
     if new.empty or not cfg.enabled:
@@ -60,7 +60,7 @@ def ask_swing(trades: pd.DataFrame, data: dict[str, pd.DataFrame], day: date, cf
         c = BY_ID[str(t["cand"])]
         user = candidate_prompt(c.id, c.name, c.description, c.weakness,
                                 swing_facts(str(t["symbol"]), data[str(t["symbol"])], day, c.id), load_events(day))
-        decide("signal", day, key, user, cfg, ledger, now, client_factory,
+        decide("signal", day, key, user, cfg, ledger, now, backend,
                {"symbol": t["symbol"], "side": "LONG", "instrument": c.instrument})
         asked += 1
     return asked
@@ -90,7 +90,7 @@ def join_llm(trades: pd.DataFrame, ledger_rows: list[dict[str, Any]]) -> pd.Data
         rec["llm_match"] = "matched" if ok else ("mismatch" if hit is not None else "no_llm_record")
         if ok and hit is not None:
             for k in ("decision", "confidence", "reason_tags", "news_for_trade", "event_risk", "global_for_trade",
-                      "volatility_view", "reasons", "cost_inr", "prompt_version", "decided_at"):
+                      "volatility_view", "reasons", "equiv_cost_inr", "prompt_version", "decided_at"):
                 rec[f"llm_{k}"] = json.dumps(hit.get(k)) if isinstance(hit.get(k), list) else hit.get(k)
         out.append(rec)
     return pd.DataFrame(out)

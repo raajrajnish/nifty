@@ -16,7 +16,15 @@ from typing import Any, cast
 
 import pandas as pd
 
-from tradingagent.agent.shadow import Ledger, ShadowConfig, ShadowRunner, candidate_prompt, decide, load_events
+from tradingagent.agent.shadow import (
+    Backend,
+    Ledger,
+    ShadowConfig,
+    ShadowRunner,
+    candidate_prompt,
+    decide,
+    load_events,
+)
 from tradingagent.data.store import MarketStore
 from tradingagent.paper.engine import MinuteBars
 from tradingagent.paper.runner import Tail
@@ -152,7 +160,7 @@ CHECKS: dict[str, Check] = {"P4": chk_p4, "FIB71": chk_fib71, "CPR": chk_cpr, "H
 class Watcher:
     def __init__(self, day: date, history: dict[tuple[str, str], pd.DataFrame], nifty_exps: list[date],
                  bn_exps: list[date], cfg: ShadowConfig, ledger: Ledger, now: Callable[[], datetime],
-                 log: Callable[[str], None] = print, client_factory: Callable[[], Any] | None = None,
+                 log: Callable[[str], None] = print, backend: Backend | None = None,
                  start_thread: Callable[[Callable[[], None]], None] | None = None,
                  signals_log: Path = SIGNALS_LOG) -> None:
         self.day, self.mem, self.nifty_exps, self.bn_exps = day, MemStore(history), nifty_exps, bn_exps
@@ -162,7 +170,7 @@ class Watcher:
         self.fired: set[str] = set()
         self.last_eval: datetime | None = None
         self.p4_hist: pd.DataFrame | None = None
-        self.runner = ShadowRunner(cfg, ledger, now, client_factory, log, start_thread)
+        self.runner = ShadowRunner(cfg, ledger, now, backend, log, start_thread)
 
     def store(self) -> MarketStore:
         """The study code expects a MarketStore; MemStore provides the only method it uses (candles)."""
@@ -232,7 +240,7 @@ class Watcher:
                                 load_events(self.day))
         extra = {"signal_ts": ts.isoformat(), "side": side, "instrument": c.instrument}
         self.runner._spawn(lambda: decide("signal", self.day, cid, user, self.cfg, self.ledger, self.now,  # noqa: SLF001
-                                          self.runner.client_factory, extra))
+                                          self.runner.backend, extra))
 
 
 def run(day: date, data_root: Path, db: Path, nifty_exps: list[date], now: Callable[[], datetime],

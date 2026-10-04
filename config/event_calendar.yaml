@@ -8,6 +8,9 @@
 # Also worth adding when known: Union Budget (usually 1 Feb), state/general election results, major heavyweight
 # results (HDFC Bank, Reliance, ICICI Bank, Infosys, TCS) — from NSE corporate announcements.
 events:
+  # RBI MPC — from the LLM's web search on 2026-10-04 (business-standard.com, "rbi-mpc-meeting-october-2026"),
+  # NOT yet checked on rbi.org.in → verified: false until the owner confirms.
+  - {date: 2026-10-07, event: "RBI MPC policy decision (~10:00 IST; meeting Oct 5-7)", verified: false, checked: 2026-10-04}
   # US Federal Reserve FOMC (decision on the 2nd day, ~23:30 IST) — federalreserve.gov/monetarypolicy/fomccalendars.htm
   - {date: 2026-10-28, event: "US FOMC decision (~23:30 IST); Indian reaction next session", verified: true, checked: 2026-10-03}
   - {date: 2026-12-09, event: "US FOMC decision (~23:30 IST); Indian reaction next session", verified: true, checked: 2026-10-03}

@@ -483,7 +483,7 @@ def cmd_paper(args: argparse.Namespace) -> int:
                 print("  " + line)
         print(f"\nClosed trades: {len(eng.closed)}  → {out}")
         return 0
-    load_dotenv(ROOT / ".env")              # live only: ANTHROPIC_API_KEY for the LLM shadow filter (never printed)
+    load_dotenv(ROOT / ".env")              # live session environment (the LLM filter uses Claude Code, no key)
     run_live(day, data_root, DB_PATH, costs, RUNTIME_DIR / "paper_state.json", ledger,
              now=lambda: clock.now().replace(tzinfo=None), equity=start_equity)
     return 0
@@ -533,8 +533,8 @@ def cmd_tournament_report(_: argparse.Namespace) -> int:
 
 
 def cmd_llm_shadow_check(_: argparse.Namespace) -> int:
-    """One real 'risk of the day' call to check the API key, web search and budget plumbing (costs ~₹1–3).
-    Recorded with kind='check' so it never counts in the forward evaluation."""
+    """One real 'risk of the day' call through Claude Code (your Claude subscription; no API key) to check the
+    CLI, web search and structured output. Recorded with kind='check' so it never counts in the evaluation."""
     from datetime import datetime as _dt
 
     from tradingagent.agent.shadow import Ledger, ShadowConfig, decide, load_events, morning_prompt
@@ -542,13 +542,13 @@ def cmd_llm_shadow_check(_: argparse.Namespace) -> int:
     load_dotenv(ROOT / ".env")
     cfg, ledger = ShadowConfig.load(), Ledger()
     today = _dt.now().date()
-    print(f"model {cfg.model}; spent this month ₹{ledger.month_spend_inr(today):.2f} of ₹{cfg.monthly_cap_inr:.0f}")
+    print(f"model {cfg.model} via Claude Code; calls today {ledger.calls_on(today)} of {cfg.max_calls_per_day}")
     rec = decide("check", today, None, morning_prompt(today, load_events(today)), cfg, ledger, _dt.now)
-    print(f"decision: {rec.get('decision')}  confidence: {rec.get('confidence')}  cost ₹{rec.get('cost_inr')}  "
+    print(f"decision: {rec.get('decision')}  confidence: {rec.get('confidence')}  "
           f"latency {rec.get('latency_s')}s  searches {(rec.get('usage') or {}).get('web_search_requests')}")
     for r in rec.get("reasons") or []:
         print("  -", r)
-    print("sources:", [s["url"] for s in (rec.get("sources") or [])][:5])
+    print("sources (model-reported):", (rec.get("sources_model_reported") or [])[:5])
     if rec.get("error"):
         print("error:", rec["error"])
     return 0 if rec.get("decision") not in (None, "NO_DECISION") else 1

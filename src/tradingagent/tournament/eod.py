@@ -20,6 +20,7 @@ from tradingagent.data.store import MarketStore
 from tradingagent.sim.costs import CostModel
 from tradingagent.sim.timing_study import bootstrap_ci
 from tradingagent.tournament.candidates import BY_ID, CANDIDATES, FORWARD_START, score_all, score_stock_universe
+from tradingagent.tournament.exits import FORWARD_VARIANTS, score_forward_variants
 
 ROOT = Path(__file__).resolve().parents[3]
 TRADES_CSV = ROOT / "data" / "paper" / "tournament_trades.csv"
@@ -75,7 +76,7 @@ def join_llm(trades: pd.DataFrame, ledger_rows: list[dict[str, Any]]) -> pd.Data
         by_key.setdefault((str(r.get("setup")), str(r.get("day"))), r)
     out = []
     for _, t in trades.iterrows():
-        cand, day = str(t["cand"]), str(t["day"])
+        cand, day = str(t["cand"]).split("-")[0], str(t["day"])      # exit variants share their base's verdict
         key = f"{cand}:{t['symbol']}" if cand in ("SW1", "SW2") else cand
         hit = by_key.get((key, day))
         ok = hit is not None
@@ -98,22 +99,24 @@ def join_llm(trades: pd.DataFrame, ledger_rows: list[dict[str, Any]]) -> pd.Data
 
 def scoreboard(j: pd.DataFrame) -> pd.DataFrame:
     rows = []
-    for c in CANDIDATES:
-        g = j[(j["cand"] == c.id)] if len(j) else j
+    ids = [(c.id, c.name, c.backtest) for c in CANDIDATES] + \
+        [(v, f"{BY_ID[v.split('-')[0]].name} — exit {v.split('-')[1]}", "variant") for v in FORWARD_VARIANTS]
+    for cid, cname, cback in ids:
+        g = j[(j["cand"] == cid)] if len(j) else j
         closed = g[g["status"] == "CLOSED"].dropna(subset=["net_inr"]) if len(g) else g
         v = closed["net_inr"].to_numpy() if len(closed) else np.array([])
         ci = bootstrap_ci(v) if len(v) >= 10 else (np.nan, np.nan, np.nan)
         dec = closed.get("llm_decision") if len(closed) else None
         take = closed[dec == "TAKE"]["net_inr"] if dec is not None else pd.Series(dtype=float)
         skip = closed[dec == "SKIP"]["net_inr"] if dec is not None else pd.Series(dtype=float)
-        rows.append({"cand": c.id, "name": c.name, "trades": len(v), "open": int((g["status"] == "OPEN").sum())
+        rows.append({"cand": cid, "name": cname, "trades": len(v), "open": int((g["status"] == "OPEN").sum())
                      if len(g) else 0, "net_per_trade": round(float(v.mean()), 0) if len(v) else None,
                      "total": round(float(v.sum()), 0) if len(v) else 0, "win%": round(float((v > 0).mean() * 100), 0)
                      if len(v) else None, "worst": round(float(v.min()), 0) if len(v) else None,
                      "ci95": f"[{ci[0]:.0f}, {ci[1]:.0f}]" if len(v) >= 10 else "n<10",
                      "llm_take_n": len(take), "llm_take_avg": round(float(take.mean()), 0) if len(take) else None,
                      "llm_skip_n": len(skip), "llm_skip_avg": round(float(skip.mean()), 0) if len(skip) else None,
-                     "backtest": c.backtest})
+                     "backtest": cback})
     return pd.DataFrame(rows)
 
 
@@ -123,12 +126,16 @@ def run_eod(db: Path, costs: CostModel, exps: list[date], today: date, now: Call
     try:
         data = score_stock_universe(store)
         trades = score_all(store, costs, exps, FORWARD_START, today, stock_data=data)
+        variants = score_forward_variants(store, costs, exps, FORWARD_START, today, data)
+        if len(variants):
+            trades = pd.concat([trades, variants], ignore_index=True)
     finally:
         store.close()
     TRADES_CSV.parent.mkdir(parents=True, exist_ok=True)
     trades.to_csv(TRADES_CSV, index=False)
     if ask_llm and len(trades):
-        n = ask_swing(trades, data, today, ShadowConfig.load(), Ledger(), now, log=log)
+        n = ask_swing(trades[trades["cand"].isin(["SW1", "SW2"])], data, today, ShadowConfig.load(), Ledger(),
+                      now, log=log)
         log(f"LLM asked about {n} swing signal(s) for tomorrow's entries (shadow only).")
     return report(trades)
 

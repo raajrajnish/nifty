@@ -21,6 +21,27 @@ from tradingagent.sim.phase3 import Data, atm, close_before, p4_rel, p4_signals
 from tradingagent.sim.stop_study import rule_or_opposite
 
 VARIANTS = ("BASE", "X1", "X2")
+# Forward set (historical filter 2026-10-04, exit_variants_20261004_0917): every variant not worse than BASE in BOTH
+# halves. Dropped: G1-X2, SW2-X1 (worse in both). Left out: SW1-X1/X2 (identical to BASE: no information).
+FORWARD_VARIANTS = ("G1-X1", "P4-X1", "P4-X2", "R6-X1", "R6-X2", "CPR-X1", "CPR-X2", "SW2-X2")
+
+
+def score_forward_variants(store: MarketStore, costs: CostModel, exps: list[date], start: date, end: date,
+                           data: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Forward-tournament rows for FORWARD_VARIANTS (same signals as their base candidate)."""
+    rows = option_variants(store, costs, "G1", g1_entries(store, exps, start, end))
+    rows += option_variants(store, costs, "P4", p4_entries(store, start, end))
+    rows += option_variants(store, costs, "CPR", cpr_entries(store, exps, start, end))
+    rows += r6_variants(store, costs, exps, start, end)
+    rows += swing_variants({s: d for s, d in data.items()}, start, end) if data else []
+    t = pd.DataFrame(rows)
+    if t.empty:
+        return t
+    t["cand"] = t["cand"] + "-" + t["variant"]
+    t = t[t["cand"].isin(FORWARD_VARIANTS)].copy()
+    t["status"] = np.where(t["reason"] == "DATA_END", "OPEN", "CLOSED")
+    t["net2_inr"] = np.nan
+    return t.drop(columns=["variant"]).reset_index(drop=True)
 OPT_GAIN, SW1_X1, SW_X2 = 0.50, 0.03, 0.05
 NIFTY_LOT = 65
 

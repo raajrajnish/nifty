@@ -23,3 +23,25 @@
 
 ## Forward
 Surviving variants are added to the forward tournament as extra rows (e.g. `G1-X1`), scored each evening on the same signals as their base. They need no extra LLM calls; the LLM verdict of the base signal applies. The same review dates and rules as the tournament apply. No variant replaces a frozen original during the tournament.
+
+## Historical filter result (run 2026-10-04 09:17, `exit_variants_20261004_0917`; code committed before the run)
+**BASE sanity:** G1 117 trades / ₹97,476, identical to the logic study.
+
+Change in mean net per trade (₹, 1 lot; swing on ₹1 lakh) vs BASE:
+
+| Candidate | X1 overall (H1 / H2) | X2 overall (H1 / H2) | Trades changed X1 / X2 |
+|---|---|---|---|
+| **P4** | **+71** (+51 / +92) | **+212** (+56 / +376) | 11% / 24% |
+| **R6** | **+27** (+18 / +37) | **+27** (+5 / +48) | 5% / 13% |
+| G1 | −15 (−83 / +55) | **−61 (−61 / −62): worse in both → DROPPED** | 9% / 22% |
+| CPR | −21 (−55 / +14) | −80 (−219 / +62) | 4% / 14% |
+| SW2 | **−878 (−1,445 / −120): worse in both → DROPPED** | −746 (−1,553 / +334) | 23% / 30% |
+| SW1 | −6 (2 of 1,045 trades changed) | 0 (no trade changed) | 0.2% / 0% |
+
+**Reading:**
+- Locking gains helps **P4 and R6** in both halves. It hurts the strategies whose profit comes from a few big trend days (**G1, SW2**), which is consistent with the diagnosis (winners peak late).
+- SW1 trades exit too quickly (above the 5-day average) for a +3% / +5% lock to matter.
+
+**Forward set (per the declared rule):** G1-X1, P4-X1, P4-X2, R6-X1, R6-X2, CPR-X1, CPR-X2, SW2-X2.
+- SW1-X1/X2 are left out as identical to BASE (no information).
+- They are scored each evening next to their frozen originals and share the original signal's LLM verdict.

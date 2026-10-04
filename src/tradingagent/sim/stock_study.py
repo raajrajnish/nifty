@@ -204,14 +204,14 @@ def simulate(sig: Signal, g: pd.DataFrame, costs: EquityIntradayCosts, cost_mult
     qty = math.floor(NOTIONAL / entry)
     if qty < 1:
         return None
-    exit_px, reason, pending = None, None, False
+    exit_px, reason, pending, exit_ts = None, None, False, None
     for k in range(len(after)):
         b = after.iloc[k]
         if pending:
-            exit_px, reason = float(b["open"]), reason
+            exit_px, reason, exit_ts = float(b["open"]), reason, b["ts"]
             break
         if b["ts"].time() >= EOD:
-            exit_px, reason = float(b["close"]), "EOD"
+            exit_px, reason, exit_ts = float(b["close"]), "EOD", b["ts"]
             break
         c = float(b["close"])
         if sig.kind == "range" and b["ts"].minute % 5 == 4:
@@ -220,13 +220,14 @@ def simulate(sig: Signal, g: pd.DataFrame, costs: EquityIntradayCosts, cost_mult
         elif sig.kind == "stop" and ((sig.side > 0 and c <= sig.lo) or (sig.side < 0 and c >= sig.hi)):
             pending, reason = True, "STOP"
     if exit_px is None:
-        exit_px, reason = float(after["close"].iloc[-1]), "DATA_END"
+        exit_px, reason, exit_ts = float(after["close"].iloc[-1]), "DATA_END", after["ts"].iloc[-1]
     exit_px *= 1 - sig.side * SLIP
     buy_v, sell_v = (entry * qty, exit_px * qty) if sig.side > 0 else (exit_px * qty, entry * qty)
     gross = (exit_px - entry) * qty * sig.side
     cst = costs.round_trip(buy_v, sell_v)
     return {"day": sig.day, "side": "LONG" if sig.side > 0 else "SHORT", "entry_ts": after["ts"].iloc[0],
-            "entry": entry, "exit": exit_px, "qty": qty, "reason": reason, "gross": gross, "cost": cst,
+            "exit_ts": exit_ts, "entry": entry, "exit": exit_px, "qty": qty, "reason": reason, "gross": gross,
+            "cost": cst,
             "net": gross - cst, "net2": gross - 2 * cst - 2 * qty * entry * SLIP}
 
 

@@ -118,6 +118,7 @@ def score_g12(store: MarketStore, costs: CostModel, exps: list[date], start: dat
                 continue
             net, net2 = _opt_net(costs, tr)
             rows.append(_row(cid, d, e.signal_ts, e.side, net, net2, symbol=option_symbol(e), reason=tr["reason"],
+                             entry_ts=tr["entry_ts"], exit_ts=tr["exit_ts"],
                              entry_px=tr["entry_px"], exit_px=tr["exit_px"], status="CLOSED"))
     return rows
 
@@ -146,16 +147,19 @@ def score_p4(store: MarketStore, costs: CostModel, start: date, end: date) -> li
             continue
         leg = legs_from_sim(tr)
         rows.append(_row("P4", d, e.signal_ts, side, leg_net(costs, leg), leg_net(costs, leg, 2.0),
+                         entry_ts=tr["entry_ts"], exit_ts=tr["exit_ts"],
                          symbol=option_symbol(e), reason=tr["reason"], entry_px=tr["entry_px"], exit_px=tr["exit_px"],
                          status="CLOSED"))
     return rows
 
 
-def _from_study(t: pd.DataFrame, variant: str, cid: str) -> list[dict[str, Any]]:
+def _from_study(t: pd.DataFrame, variant: str, cid: str, underlying: str = "NIFTY") -> list[dict[str, Any]]:
     if t.empty or "variant" not in t:
         return []
     t = t[t["variant"] == variant]
     return [_row(cid, r["day"], r["entry_ts"], r["side"], r["net_inr"], r["net2_inr"], reason=r["reason"],
+                 entry_ts=r["entry_ts"], exit_ts=r["exit_ts"],
+                 symbol=f"NSE-{underlying}-{pd.Timestamp(r['expiry']):%d%b%y}-{int(r['strike'])}-{r['side']}",
                  entry_px=r["entry_px"], exit_px=r["exit_px"], status="CLOSED") for _, r in t.iterrows()]
 
 
@@ -194,7 +198,7 @@ def score_all(store: MarketStore, costs: CostModel, exps: list[date], start: dat
     cpr = popular_study.stage_b(store, costs, exps, ["K1_narrow_cpr"], start, end)
     rows += _from_study(cpr, "K1_narrow_cpr", "CPR")
     _, ht = bn_heavy.run(store, costs, start, end)
-    rows += _from_study(ht, "HL1", "HL1")
+    rows += _from_study(ht, "HL1", "HL1", "BANKNIFTY")
     idx = store.candles("NSE-NIFTY", "1minute")
     idx["day"] = idx["ts"].dt.date
     r6 = round2.r6_short_straddle(store, idx, exps, costs, halves={"FWD": (start, end)})
@@ -205,8 +209,9 @@ def score_all(store: MarketStore, costs: CostModel, exps: list[date], start: dat
     if not m1.empty:
         bt, _ = ss.run_stock("BSE", m1, idx.drop(columns="day"), ss.EquityIntradayCosts(),
                              periods={"FWD": (start, end)}, setups={"ST1": ss.st1_orb_with_nifty})
-        rows += [_row("BSE", r["day"], r["entry_ts"], r["side"], r["net"], r["net2"], symbol="BSE",
-                      reason=r["reason"], entry_px=r["entry"], exit_px=r["exit"], status="CLOSED")
+        rows += [_row("BSE", r["day"], r["entry_ts"], r["side"], r["net"], r["net2"], symbol="NSE-BSE",
+                      reason=r["reason"], entry_ts=r["entry_ts"], exit_ts=r["exit_ts"], entry_px=r["entry"],
+                      exit_px=r["exit"], status="CLOSED")
                  for _, r in bt.iterrows()]
     rows += score_swing(stock_data if stock_data is not None else score_stock_universe(store), start, end)
     t = pd.DataFrame(rows)

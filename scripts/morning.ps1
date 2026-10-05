@@ -20,6 +20,23 @@ function Say($msg, $color = "Gray") { Write-Host $msg -ForegroundColor $color }
 Say "=== tradingagent morning start ===" Cyan
 Say "Never paste your token into chat. It is only saved to .env on this computer.`n"
 
+# 0. Close everything left over from earlier runs (server, recorder, paper, tournament windows) BEFORE the
+#    token check: a running tradingagent.exe locks the file `uv run` reinstalls, which made the token check
+#    fail with a correct token (2026-10-05). Never touches this window or its parent.
+$self = @($PID, (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId)
+$old = Get-CimInstance Win32_Process | Where-Object {
+    $_.ProcessId -notin $self -and $_.CommandLine -and (
+        $_.CommandLine -match 'tradingagent(\.exe)?"?\s+[a-z]' -or $_.CommandLine -match "WindowTitle='tradingagent ")
+}
+foreach ($p in $old) {
+    Say "Closing leftover process: PID $($p.ProcessId) ($($p.Name))" DarkGray
+    Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+}
+foreach ($l in (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)) {
+    Stop-Process -Id $l.OwningProcess -Force -ErrorAction SilentlyContinue
+}
+if ($old) { Start-Sleep -Seconds 2; Say "Leftovers closed.`n" DarkGray }
+
 # 1. .env exists
 if (-not (Test-Path $envFile)) { Copy-Item (Join-Path $root ".env.example") $envFile }
 

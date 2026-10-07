@@ -78,6 +78,14 @@
     const recAge = rec && rec.last_write_at ? Math.max(0, (Date.now() - new Date(rec.last_write_at)) / 1000) : null;
     $("dot-rec").className = "dot " + (rec && rec.running && recAge < 30 ? "ok" : "bad");
     $("rec-text").textContent = rec ? (rec.running ? `${Math.round(recAge ?? 0)}s ago` : "stopped") : "off";
+    // Live-feed alarm (2026-10-07): during market hours, shout if the recorder has stopped or its data is > 60 s old.
+    const now = new Date(), hm = now.getHours() * 60 + now.getMinutes(), wkday = now.getDay() >= 1 && now.getDay() <= 5;
+    const mkt = wkday && hm >= 9 * 60 + 15 && hm < 15 * 60 + 30;
+    const stale = !rec || !rec.running || recAge == null || recAge > 60;
+    $("feed-banner").hidden = !(mkt && stale);
+    $("feed-banner").textContent = (mkt && stale) ? "⚠ LIVE FEED STOPPED: last data " +
+      (rec && rec.last_write_at ? rec.last_write_at.slice(11, 19) + ` (${Math.round(recAge ?? 0)}s ago)` : "none today") +
+      ". Paper engines and U1–U4 are blind. The recorder restarts itself; if this stays, run Start Trading." : "";
     $("dot-engine").className = "dot " + (o.paper.engine_running ? "ok" : "bad");
     $("halt-banner").hidden = !s.halted;
     $("halt-reason").textContent = s.halt ? `${s.halt.reason} (via ${s.halt.source})` : "";

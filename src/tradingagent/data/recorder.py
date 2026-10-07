@@ -130,11 +130,23 @@ class Recorder:
             if isinstance(e, BrokerRateLimited):
                 self._backoff_until = _time.monotonic() + 10  # back off all polling for 10 s
 
-    def _save_status(self) -> None:
+    def _save_status(self, payload: str | None = None) -> None:
+        """Atomic status write. On Windows, os.replace fails while another process (the dashboard) has the file open,
+        so retry briefly; the status is display-only and must NEVER stop recording (2026-10-07: an unhandled
+        PermissionError here ended the recorder at 12:07)."""
         self._status_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._status_path.with_suffix(f".{os.getpid()}.tmp")
-        tmp.write_text(json.dumps(self.status.__dict__, default=str), encoding="utf-8")
-        os.replace(tmp, self._status_path)
+        if payload is None:
+            payload = json.dumps(self.status.__dict__, default=str)
+        tmp.write_text(payload, encoding="utf-8")
+        for attempt in range(5):
+            try:
+                os.replace(tmp, self._status_path)
+                return
+            except OSError:
+                if attempt == 4:
+                    raise
+                _time.sleep(0.05 * (attempt + 1))
 
     # ---- setup -----------------------------------------------------------------------------------
     def setup(self) -> None:
@@ -258,14 +270,22 @@ class Recorder:
         t_end = None if duration_s is None else _time.monotonic() + duration_s
         try:
             while self._now().time() < c.stop and (t_end is None or _time.monotonic() < t_end):
-                with self._lock:
-                    self._save_status()
+                try:
+                    with self._lock:  # snapshot under the lock; the file write (and any retries) happen outside it
+                        payload = json.dumps(self.status.__dict__, default=str)
+                    self._save_status(payload)
+                except Exception as e:  # a failed status write is logged, never fatal: data keeps flowing
+                    self._error("status write", e)
                 self._sleep(1.0)
         finally:
             self._stop.set()
             for t in threads:
                 t.join(timeout=15)
             self.status.running = False
-            with self._lock:
-                self._save_status()
+            try:
+                with self._lock:
+                    payload = json.dumps(self.status.__dict__, default=str)
+                self._save_status(payload)
+            except Exception as e:  # never let the final status write turn a normal stop into a crash
+                self._error("status write", e)
         return self.status

@@ -140,3 +140,50 @@ def test_extra_cash_symbols_recorded_and_failure_never_breaks_nifty(make, tmp_pa
     bad._poll_ltp()  # noqa: SLF001
     line = json.loads((tmp_path / "raw" / "date=2026-09-29" / "ltp.jsonl").read_text().splitlines()[-1])
     assert set(line["index"]) == {"NSE_NIFTY", "NSE_INDIAVIX"} and "ltp extras" in bad.status.last_error
+
+
+def test_status_write_retries_when_windows_locks_the_file(make, tmp_path, monkeypatch):
+    """2026-10-07: os.replace raised PermissionError while the dashboard read the status file, killing the recorder."""
+    import tradingagent.data.recorder as rmod
+
+    rec = make(FakeSource())
+    rec.setup()
+    real = rmod.os.replace
+    fails = {"n": 2}
+
+    def flaky(a, b):
+        if fails["n"] > 0:
+            fails["n"] -= 1
+            raise PermissionError(5, "Access is denied")
+        return real(a, b)
+
+    monkeypatch.setattr(rmod.os, "replace", flaky)
+    monkeypatch.setattr(rmod._time, "sleep", lambda s: None)
+    rec._save_status()  # noqa: SLF001
+    assert fails["n"] == 0
+    assert json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))["running"] is True
+
+
+def test_recording_continues_when_status_write_keeps_failing(make, tmp_path, monkeypatch):
+    import tradingagent.data.recorder as rmod
+
+    rec = make(FakeSource())
+    real = rmod.os.replace
+    state = {"block": False}
+
+    def blocked(a, b):
+        if state["block"] and str(b).endswith("status.json"):
+            raise PermissionError(5, "Access is denied")
+        return real(a, b)
+
+    orig_setup = rec.setup
+
+    def setup_then_block():
+        orig_setup()
+        state["block"] = True               # every status write fails from now on
+
+    monkeypatch.setattr(rec, "setup", setup_then_block)
+    monkeypatch.setattr(rmod.os, "replace", blocked)
+    st = rec.run(duration_s=0.3)            # must not raise
+    assert st.counts.get("ltp", 0) > 3      # data kept flowing
+    assert "status write" in (st.last_error or "")

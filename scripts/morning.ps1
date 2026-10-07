@@ -117,13 +117,18 @@ if ($Demo) { $uiArgs += " --demo" }
 Start-Process -FilePath "powershell" -WorkingDirectory $root -WindowStyle Minimized `
     -ArgumentList "-NoExit", "-Command", "`$Host.UI.RawUI.WindowTitle='tradingagent server'; uv $uiArgs"
 
-# 6b. (Re)start the read-only NIFTY recorder in its own minimized window (it waits for 09:14, stops 15:31)
+# 6b. (Re)start the read-only NIFTY recorder in its own minimized window (it waits for 09:14, stops 15:31).
+#     Auto-restart (2026-10-07): if the recorder exits before 15:31 for ANY reason, the window restarts it after 5 s;
+#     a same-day restart resumes appending to today's files.
 Get-CimInstance Win32_Process | Where-Object {
     $_.CommandLine -match 'tradingagent(\.exe"?)? record' -or $_.CommandLine -match "WindowTitle='tradingagent recorder'"
 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+$recLoop = "`$Host.UI.RawUI.WindowTitle='tradingagent recorder'; " +
+           "while ((Get-Date).TimeOfDay -lt [TimeSpan]'15:31:00') { uv run tradingagent record; " +
+           "if ((Get-Date).TimeOfDay -lt [TimeSpan]'15:31:00') { Write-Host ((Get-Date -Format 'HH:mm:ss') + ' recorder stopped early - restarting in 5 s') -ForegroundColor Yellow; Start-Sleep -Seconds 5 } }"
 Start-Process -FilePath "powershell" -WorkingDirectory $root -WindowStyle Minimized `
-    -ArgumentList "-NoExit", "-Command", "`$Host.UI.RawUI.WindowTitle='tradingagent recorder'; uv run tradingagent record"
-Say "Recorder started (window 'tradingagent recorder'; data in data\raw\date=<today>)."
+    -ArgumentList "-NoExit", "-Command", $recLoop
+Say "Recorder started with auto-restart (window 'tradingagent recorder'; data in data\raw\date=<today>)."
 
 # 6c. (Re)start the G1/G2 paper engine — reads the recorder's files, PAPER ONLY (no orders)
 Get-CimInstance Win32_Process | Where-Object {
